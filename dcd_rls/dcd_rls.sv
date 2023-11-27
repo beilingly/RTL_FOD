@@ -15,6 +15,7 @@ CALI_MODE_RLS,
 X,
 ERR,
 PSEGS,
+KDTC_INIT,
 Y
 );
 
@@ -25,11 +26,14 @@ input CALI_MODE_RLS;
 input real X; 
 input real ERR;
 input [1:0] PSEGS; // segments select 2^0, 2^1, 2^2, 2^3
+input real KDTC_INIT; // initial kdtc
 
 output real Y; // output RLS-Distortion data
 
 reg [`Nseg-1:0] en_seg;
 real y_seg [0:`Nseg-1];
+real kdtc_init_unit;
+real kdtcc_init [0:`Nseg-1];
 integer x_int;
 real x_frac;
 integer i;
@@ -39,7 +43,13 @@ always @* begin
     x_int = $floor(X / (2.0**-(1.0*PSEGS)));
     x_frac = X - x_int * (2.0**-(1.0*PSEGS));
 
-    $display("%f %f", X, X /(2.0**-(1.0*PSEGS)));
+    // $display("%f %f", X, X /(2.0**-(1.0*PSEGS)));
+
+    // calculate LUTs initial point
+    kdtc_init_unit = 1.0 * KDTC_INIT / (2**PSEGS);
+    for (i=0; i<`Nseg; i=i+1) begin
+        kdtcc_init[i] = kdtc_init_unit * i;
+    end
 
     // wake up one of the rls LUTs
     en_seg = EN? (1'b1<<x_int): 0;
@@ -52,7 +62,7 @@ end
 genvar geni;
 generate
     for (geni=0; geni<`Nseg; geni=geni+1) begin: genblock_rls_segs
-        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .ERR(ERR), .Y(y_seg[geni]) );
+        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .ERR(ERR), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[geni]), .Y(y_seg[geni]) );
     end
 endgenerate
 
@@ -70,6 +80,8 @@ CLK,
 CALI_MODE_RLS,
 X,
 ERR,
+kdtcb_init,
+kdtcc_init,
 Y
 );
 
@@ -78,9 +90,11 @@ Y
 input NRST;
 input EN;
 input CLK;
-input CALI_MODE_RLS;
+input CALI_MODE_RLS; // calibration method 0:LMS, 1:RLS, default is LMS
 input real X; 
 input real ERR;
+input real kdtcb_init; // initial gain
+input real kdtcc_init; // initial offset
 
 output real Y; // output RLS-Distortion data
 
@@ -135,16 +149,18 @@ always @(posedge CLK or negedge NRST) begin
     if (!NRST) begin
         // RLS initial
         for (i=0; i<`Nx; i=i+1) begin
-            hv_d1[i] = 0; // set to a proper initial point
-            rv_d1[i] = 0; // reset to 0
+            hv_d1[i] <= 0; // set to a proper initial point
+            rv_d1[i] <= 0; // reset to 0
         end
+        hv_d1[0] <= kdtcc_init;
+        hv_d1[1] <= kdtcb_init;
         // reset to a unit matrix
         for (i=0; i<`Nx; i=i+1) begin
             for (j=0; j<`Nx; j=j+1) begin
                 if (i==j) begin
-                    Rv_d1[i*`Nx+j] = 1;
+                    Rv_d1[i*`Nx+j] <= 1;
                 end else begin
-                    Rv_d1[i*`Nx+j] = 0;
+                    Rv_d1[i*`Nx+j] <= 0;
                 end
             end
         end
@@ -167,6 +183,8 @@ always @(posedge CLK or negedge NRST) begin
         for (i=0; i<`Nx; i=i+1) begin
             lms_lut_d1[i] <= 0; // set to a proper initial point
         end
+        lms_lut_d1[0] <= kdtcc_init;
+        lms_lut_d1[1] <= kdtcb_init;
     end else if (lms_en) begin
         for (i=0; i<`Nx; i=i+1) begin
             lms_lut_d1[i] <= lms_lut[i];

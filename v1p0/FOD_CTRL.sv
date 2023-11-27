@@ -138,40 +138,45 @@ end
 // calibrete phase offset
 reg [`WF_PHASE-1:0] nco_phase_s;
 reg [`WF_PHASE-1:0] nco_phase_s_rnd;
+reg signed [`WF_PHASE-1:0] diff_phase_rnd;
 reg signed [`WF_PHASE-1:0] diff_phase;
-reg signed [`WF_PHASE-1:0] diff_phase_shift_ki;
-reg [`WF_PHASE-1:0] dphase_c; // dphase for offset calibration
-// reg [`WF_PHASE-1:0] rand24;
+reg signed [`WF_PHASE-1:0] dphase_c; // dphase for offset calibration
+reg [`WF_PHASE-1:0] rand_u24;
 
 always @* begin
 	nco_phase_s = nco_phase << (`WF_PHASE-`WF-os_main_aux);
-	// rand24 = $random>>>(8+3);
-	// nco_phase_s_rnd = nco_phase_s + rand24;
-	dphase_c = diff_phase_shift_ki;
+	rand_u24 = $random>>>(8+3);
+	nco_phase_s_rnd = nco_phase_s + rand_u24;
+	diff_phase_rnd = nco_phase_s_rnd - (dphase_m + dphase_c);
 	diff_phase = nco_phase_s - (dphase_m + dphase_c);
 end
 
 always @(posedge CLK or negedge NRST) begin
 	if (!NRST) begin
-		diff_phase_shift_ki <= 0;
+		dphase_c <= 0;
 	end else begin 
 		// phase sync convergence rate
 		// shift 12, 20us, error<1e-3; shift 16, 500us, error<1e-5
-		// dphase_c has a pattern with 1200ns period, maybe lead to a spur
-		diff_phase_shift_ki <= (diff_phase >>> 12) + diff_phase_shift_ki; 
+		// dphase_c has a pattern with 1200ns period, maybe lead to a spur, but that can be suppressed with a digital random dither
+		dphase_c <= (diff_phase_rnd >>> 12) + dphase_c; 
 	end
 end
 
 // ouput normalized phase error
-assign PHE_NORM = diff_phase[`WF_PHASE-`WF-1]? (diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
+// diffphase of dig and analog
+// assign PHE_NORM = diff_phase[`WF_PHASE-`WF-1]? (diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
+// diffphase of dig and analog with digital random dither
+assign PHE_NORM = diff_phase_rnd[`WF_PHASE-`WF-1]? (diff_phase_rnd[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase_rnd[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
 
 // test
 integer fp1;
-real r_dphase_c, r_rand24;
+real r_dphase_c, r_rand_u24, r_diff_phase_rnd, r_diff_phase;
 
 always @* begin
 	r_dphase_c = $signed(dphase_c) * (2.0**-`WF_PHASE);
-	// r_rand24 = $signed(rand24) * (2.0**-`WF_PHASE);
+	r_rand_u24 = $unsigned(rand_u24) * (2.0**-`WF_PHASE);
+	r_diff_phase_rnd = $signed(diff_phase_rnd) * (2.0**-`WF_PHASE);
+	r_diff_phase = $signed(diff_phase) * (2.0**-`WF_PHASE);
 end
 
 initial begin
@@ -184,81 +189,65 @@ end
 
 endmodule
 
-// // ------------------------------------------------------------
-// // Module Name: CALI_DTCINL
-// // Function: 0th/1st/2nd-order calibrate DTC INL
-// // Authot: Yumeng Yang Date: 2023-11-17
-// // Version: v1p0
-// // ------------------------------------------------------------
-// module CALI_DTCINL (
-// // input
-// NRST,
-// CLK,
-// EN,
-// phe_remain,
-// PHE,
-// // output
-// dtc_dcw
-// );
+// ------------------------------------------------------------
+// Module Name: CALI_DTCINL
+// Function: 0th/1st/2nd-order calibrate DTC INL；
+// 			calibration method: piecewise + LMS/RLS + 0th/1st/2nd-order
+// Authot: Yumeng Yang Date: 2023-11-27
+// Version: v1p0
+// ------------------------------------------------------------
+module CALI_DTCINL (
+// input
+NRST,
+CLK,
+EN,
+DSM_PHE,
+PHE_NORM,
+CALI_MODE_RLS,
+// output
+dtc_dcw
+);
 
-// // io
-// input NRST;
-// input CLK;
-// input EN;
-// input real phe_remain; // [`WF-2:0] 0<x<0.5
-// input [3:0] PHE;
+// io
+input NRST;
+input CLK;
+input EN; // calibration en
+input [`WF-1:0] DSM_PHE; // DSM output
+input [`WF-1:0] PHE_NORM; // normalized phe
+input CALI_MODE_RLS; // calibration method
 
-// output real dtc_dcw;
+output real dtc_dcw;
 
-// // internal signals
-// // DSM residual error
-// integer phe_msb;
-// real phe_lsb;
-// // LUTs
-// real kdtcB_cali, kdtcC_cali;
-// real LUTB [1:0];
-// real LUTC [1:0];
-// // RLS parameters
-// parameter real lambda = 2.0**-8;
-// parameter real KDTC = 1/8e9/160e-15;
-// real Rn, Rn_d1;
-// real corrxx;
-// real deltabn [1:0];
-// real deltabn0 [1:0];
-// real en;
-
-// // split segments
-// always @* begin
-// 	// 2 segments
-// 	phe_msb = (phe_remain*2>=0.5)? 1: 0;
-// 	phe_lsb = phe_remain - phe_msb*0.25;
-// end
-
-// // select coefficients from LUTs
-// assign kdtcB_cali = LUTB[phe_msb]; assign kdtcC_cali = LUTC[phe_msb];
-
-// initial begin
-// 	LUTB[0] = KDTC;
-// 	LUTB[1] = KDTC;
-// 	LUTC[0] = 0;
-// 	LUTC[1] = KDTC/2;
-// end
-
-// assign Rn = Rn_d1 * lambda + corrxx;
-// assign corrxx = phe_msb * phe_msb + phe_lsb * phe_lsb;
-// assign deltabn[0] = en * phe_lsb;
-// assign deltabn[1] = en * phe_msb;
-
-// always @ (posedge CLK or negedge NRST) begin
-// 	if (!NRST) begin
-
-// 	end else begin
-// 		Rn_d1 <= Rn;
-// 	end
-// end
+// internal signal
+reg dsm_phe_qt;
+reg [`WF-1:0] dsm_phe_remain;
+reg [`WF-1:0] dsm_phe_remain_sl; // shift left for 1bit
+real err;
 
 
-// endmodule
+always @* begin
+	dsm_phe_qt = DSM_PHE[`WF-1];
+	dsm_phe_remain = DSM_PHE[`WF-2:0]; // 0<=x<0.5
+	dsm_phe_remain_sl = dsm_phe_remain << 1; // 0<=x<1
+	// phase error between fod and pllaux
+	err = $signed(PHE_NORM) * (2.0**-`WF);
+end
+
+// internal signals
+CALI_RLS_PSEG U2_CALI_DTCINL_CALI_RLS_PSEG (
+.NRST(NRST),
+.EN(EN),
+.CLK(CLK),
+.CALI_MODE_RLS(CALI_MODE_RLS),
+.X(),
+.ERR(err),
+.PSEGS(),
+.KDTC_INIT(),
+.Y()
+);
+
+
+endmodule
 // ------------------------------------------------------------
 // Module Name: FOD_CTRL
 // Function: generate DTC/RT/MMD ctrl word
