@@ -61,8 +61,11 @@ end
 // instances of RLS
 genvar geni;
 generate
-    for (geni=0; geni<`Nseg; geni=geni+1) begin: genblock_rls_segs
-        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .ERR(ERR), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[geni]), .Y(y_seg[geni]) );
+    // geni = 0, pivot
+    CALI_RLS UGEN_RLS_PIVOT ( .NRST(NRST), .EN(en_seg[0]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .ERR(ERR), .PIVOT(1'd1), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[0]), .Y(y_seg[0]) );
+    // geni > 0
+    for (geni=1; geni<`Nseg; geni=geni+1) begin: genblock_rls_segs
+        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .ERR(ERR), .PIVOT(1'd0), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[geni]), .Y(y_seg[geni]) );
     end
 endgenerate
 
@@ -80,6 +83,7 @@ CLK,
 CALI_MODE_RLS,
 X,
 ERR,
+PIVOT,
 kdtcb_init,
 kdtcc_init,
 Y
@@ -93,6 +97,7 @@ input CLK;
 input CALI_MODE_RLS; // calibration method 0:LMS, 1:RLS, default is LMS
 input real X; 
 input real ERR;
+input PIVOT; // set the offset term as 0, the segment is a pivot
 input real kdtcb_init; // initial gain
 input real kdtcc_init; // initial offset
 
@@ -131,7 +136,7 @@ parameter integer Mb = 16;
 real lms_k [0:`Nx-1];
 
 initial begin
-    lms_k[0] = 1e-3;
+    lms_k[0] = 1e-1;
     lms_k[1] = 1e-1;
     lms_k[2] = 1e-2;
 end
@@ -195,7 +200,7 @@ end
 always @* begin
     // get data from external
     x = X;
-    xv[2] = x**2; xv[1] = x; xv[0] = 1;
+    xv[2] = x**2; xv[1] = x; xv[0] = PIVOT? 0: 1;
 
     // initial combination register
     err = 0;
@@ -241,7 +246,7 @@ always @* begin
 
         // calculate distortion output
         // yn = hn_d1' * xn
-        veractor_pro_xt_y(rls_en, hv_d1, xv, yv);
+        veractor_pro_xt_y(1'b1, hv_d1, xv, yv);
         Y = yv;
 
         // get error data from external
@@ -294,7 +299,7 @@ always @* begin
     end else begin
         // LMS mode
         // calculate distortion output
-        veractor_pro_xt_y(lms_en, lms_lut_d1, xv, y_lms);
+        veractor_pro_xt_y(1'b1, lms_lut_d1, xv, y_lms);
         Y = y_lms;
 
         // get error

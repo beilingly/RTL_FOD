@@ -2,6 +2,8 @@
 `define WF 16
 `define WF_PHASE 24
 
+`include "../dcd_rls/dcd_rls.sv"
+
 // -------------------------------------------------------
 // Module Name: DSM_MASH1
 // Function: MASH1
@@ -71,6 +73,9 @@ PHE_MEASURE,
 // output
 PHE_NORM
 );
+
+// delay information
+// PHE_MEASURE -> PHE_NORM delay 1 cycle
 
 input NRST;
 input CLK;
@@ -159,6 +164,7 @@ always @(posedge CLK or negedge NRST) begin
 		// shift 12, 20us, error<1e-3; shift 16, 500us, error<1e-5
 		// dphase_c has a pattern with 1200ns period, maybe lead to a spur, but that can be suppressed with a digital random dither
 		dphase_c <= (diff_phase_rnd >>> 12) + dphase_c; 
+		// dphase_c <= (diff_phase_rnd[`WF_PHASE-1]? (-`WF_PHASE'd512): (`WF_PHASE'd512)) + dphase_c;
 	end
 end
 
@@ -208,6 +214,10 @@ CALI_MODE_RLS,
 dtc_dcw
 );
 
+// delay information
+// DSM output -> DCW delay 1 cycle
+// PHE_MEASURE -> PHE_NORM delay 1 cycle
+
 // io
 input NRST;
 input CLK;
@@ -219,32 +229,59 @@ input CALI_MODE_RLS; // calibration method
 output real dtc_dcw;
 
 // internal signal
+reg [`WF-1:0] DSM_PHE_dn [1:3], DSM_PHE_sync; // sync with PHE_NORM
 reg dsm_phe_qt;
 reg [`WF-1:0] dsm_phe_remain;
-reg [`WF-1:0] dsm_phe_remain_sl; // shift left for 1bit
+reg [`WF-1:0] dsm_phe_remain_sl; // shift left 1bit
+real dsm_phe_remain_real;
 real err;
 
+always @(posedge CLK or negedge NRST) begin
+	if (!NRST) begin
+		DSM_PHE_dn[1] <= 0;
+		DSM_PHE_dn[2] <= 0;
+		DSM_PHE_dn[3] <= 0;
+	end else begin
+		DSM_PHE_dn[1] <= DSM_PHE;
+		DSM_PHE_dn[2] <= DSM_PHE_dn[1];
+		DSM_PHE_dn[3] <= DSM_PHE_dn[2];
+	end
+end
 
 always @* begin
-	dsm_phe_qt = DSM_PHE[`WF-1];
-	dsm_phe_remain = DSM_PHE[`WF-2:0]; // 0<=x<0.5
-	dsm_phe_remain_sl = dsm_phe_remain << 1; // 0<=x<1
+	DSM_PHE_sync = DSM_PHE_dn[3];
+	dsm_phe_qt = DSM_PHE_sync[`WF-1];
+	dsm_phe_remain = DSM_PHE_sync[`WF-2:0]; // 0<=x<0.5
+	dsm_phe_remain_sl = dsm_phe_remain << 1; // 0<=2*x<1.0
+	dsm_phe_remain_real = $unsigned(dsm_phe_remain_sl) * (2.0**-`WF);
 	// phase error between fod and pllaux
-	err = $signed(PHE_NORM) * (2.0**-`WF);
+	err = 1.0 * $signed(PHE_NORM) * (2.0**-`WF);
 end
 
 // internal signals
+
 CALI_RLS_PSEG U2_CALI_DTCINL_CALI_RLS_PSEG (
 .NRST(NRST),
 .EN(EN),
 .CLK(CLK),
 .CALI_MODE_RLS(CALI_MODE_RLS),
-.X(),
+.X(dsm_phe_remain_real),
 .ERR(err),
-.PSEGS(),
-.KDTC_INIT(),
-.Y()
+.PSEGS(2'd0),
+.KDTC_INIT(780.0*0.5),
+.Y(dtc_dcw)
 );
+
+// test
+integer fp1;
+
+initial begin
+	fp1 = $fopen("corr_dsm_err.txt");
+end
+
+always @(posedge CLK) begin
+	$fstrobe(fp1, "%3.15e %.8f %.8f", $realtime, dsm_phe_remain_real, err);
+end
 
 
 endmodule
@@ -268,7 +305,11 @@ RT_DCW,
 DTC_DCW
 );
 
-parameter real KDTC = 1/8e9/160e-15 * 1;
+parameter real KDTC = 1/8e9/160e-15 * 1.0;
+
+// delay information
+// DSM output -> DCW delay 1 cycle
+// PHE_MEASURE -> PHE_NORM delay 1 cycle
 
 // io
 input NARST;
@@ -322,6 +363,9 @@ assign phe_quant = DSM_PHE[`WF-1];
 assign phe_remain = DSM_PHE[`WF-2:0];
 
 // calibration
+// phase sync
+wire [`WF-1:0] PHE_NORM;
+
 CALI_PHASESYNC U1_FOD_CTRL_CALI_PHASESYNC (
 .NRST(NRST),
 .CLK(CLK),
@@ -330,11 +374,32 @@ CALI_PHASESYNC U1_FOD_CTRL_CALI_PHASESYNC (
 .FCW_PLL_MAIN_S(3'd5),
 .FCW_PLL_AUX_S(3'd4),
 .PHE_MEASURE(PHE),
-.PHE_NORM()
+.PHE_NORM(PHE_NORM)
+);
+
+// dtc cali
+real dtc_dcw_real;
+reg DTCCALI_EN;
+
+initial begin
+	DTCCALI_EN = 0;
+	#20e-6;
+	DTCCALI_EN = 0;
+end
+
+CALI_DTCINL U1_FOD_CTRL_CALI_DTCINL (
+.NRST(NRST),
+.CLK(CLK),
+.EN(DTCCALI_EN),
+.DSM_PHE(DSM_PHE),
+.PHE_NORM(PHE_NORM),
+.CALI_MODE_RLS(1'd0), // 0:LMS, 1:RLS
+.dtc_dcw(dtc_dcw_real)
 );
 
 // dtc dcw calc
-assign dtc_dcw = (phe_remain * (2.0**-`WF)) * KDTC ;
+// assign dtc_dcw = (phe_remain * (2.0**-`WF)) * KDTC * 1.0 ;
+assign dtc_dcw = dtc_dcw_real * 1.0;
 
 // test
 real fcw_real;
