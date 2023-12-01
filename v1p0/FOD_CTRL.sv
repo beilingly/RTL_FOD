@@ -229,29 +229,15 @@ input CALI_MODE_RLS; // calibration method
 output real dtc_dcw;
 
 // internal signal
-reg [`WF-1:0] DSM_PHE_dn [1:3], DSM_PHE_sync; // sync with PHE_NORM
 reg dsm_phe_qt;
 reg [`WF-1:0] dsm_phe_remain;
 reg [`WF-1:0] dsm_phe_remain_sl; // shift left 1bit
 real dsm_phe_remain_real;
 real err;
 
-always @(posedge CLK or negedge NRST) begin
-	if (!NRST) begin
-		DSM_PHE_dn[1] <= 0;
-		DSM_PHE_dn[2] <= 0;
-		DSM_PHE_dn[3] <= 0;
-	end else begin
-		DSM_PHE_dn[1] <= DSM_PHE;
-		DSM_PHE_dn[2] <= DSM_PHE_dn[1];
-		DSM_PHE_dn[3] <= DSM_PHE_dn[2];
-	end
-end
-
 always @* begin
-	DSM_PHE_sync = DSM_PHE_dn[3];
-	dsm_phe_qt = DSM_PHE_sync[`WF-1];
-	dsm_phe_remain = DSM_PHE_sync[`WF-2:0]; // 0<=x<0.5
+	dsm_phe_qt = DSM_PHE[`WF-1];
+	dsm_phe_remain = DSM_PHE[`WF-2:0]; // 0<=x<0.5
 	dsm_phe_remain_sl = dsm_phe_remain << 1; // 0<=2*x<1.0
 	dsm_phe_remain_real = $unsigned(dsm_phe_remain_sl) * (2.0**-`WF);
 	// phase error between fod and pllaux
@@ -266,6 +252,7 @@ CALI_RLS_PSEG U2_CALI_DTCINL_CALI_RLS_PSEG (
 .CLK(CLK),
 .CALI_MODE_RLS(CALI_MODE_RLS),
 .X(dsm_phe_remain_real),
+.sync_dly(3'd2),
 .ERR(err),
 .PSEGS(2'd0),
 .KDTC_INIT(780.0*0.5),
@@ -384,7 +371,7 @@ reg DTCCALI_EN;
 initial begin
 	DTCCALI_EN = 0;
 	#20e-6;
-	DTCCALI_EN = 0;
+	DTCCALI_EN = 1;
 end
 
 CALI_DTCINL U1_FOD_CTRL_CALI_DTCINL (

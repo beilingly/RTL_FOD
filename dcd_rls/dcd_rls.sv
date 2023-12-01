@@ -13,6 +13,7 @@ EN,
 CLK,
 CALI_MODE_RLS,
 X,
+sync_dly,
 ERR,
 PSEGS,
 KDTC_INIT,
@@ -24,6 +25,7 @@ input EN;
 input CLK;
 input CALI_MODE_RLS;
 input real X; 
+input [2:0] sync_dly;
 input real ERR;
 input [1:0] PSEGS; // segments select 2^0, 2^1, 2^2, 2^3
 input real KDTC_INIT; // initial kdtc
@@ -62,10 +64,10 @@ end
 genvar geni;
 generate
     // geni = 0, pivot
-    CALI_RLS UGEN_RLS_PIVOT ( .NRST(NRST), .EN(en_seg[0]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .ERR(ERR), .PIVOT(1'd1), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[0]), .Y(y_seg[0]) );
+    CALI_RLS UGEN_RLS_PIVOT ( .NRST(NRST), .EN(en_seg[0]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .sync_dly(sync_dly), .ERR(ERR), .PIVOT(1'd1), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[0]), .Y(y_seg[0]) );
     // geni > 0
     for (geni=1; geni<`Nseg; geni=geni+1) begin: genblock_rls_segs
-        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .ERR(ERR), .PIVOT(1'd0), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[geni]), .Y(y_seg[geni]) );
+        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .sync_dly(sync_dly), .ERR(ERR), .PIVOT(1'd0), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[geni]), .Y(y_seg[geni]) );
     end
 endgenerate
 
@@ -82,6 +84,7 @@ EN,
 CLK,
 CALI_MODE_RLS,
 X,
+sync_dly,
 ERR,
 PIVOT,
 kdtcb_init,
@@ -96,6 +99,7 @@ input EN;
 input CLK;
 input CALI_MODE_RLS; // calibration method 0:LMS, 1:RLS, default is LMS
 input real X; 
+input [2:0] sync_dly;
 input real ERR;
 input PIVOT; // set the offset term as 0, the segment is a pivot
 input real kdtcb_init; // initial gain
@@ -106,8 +110,9 @@ output real Y; // output RLS-Distortion data
 // internal signal
 
 // RLS signal
+real x_dn [1:8]; // sync x with err
 real x;
-real xv [0:`Nx-1];
+real xv [0:`Nx-1], xv_cur [0:`Nx-1];
 real xv_mat [0:`Nx*`Nx-1];
 real bv [0:`Nx-1];
 real b0v [0:`Nx-1], dhv [0:`Nx-1];
@@ -146,6 +151,35 @@ wire rls_en, lms_en;
 
 assign rls_en = EN & CALI_MODE_RLS;
 assign lms_en = EN & (~CALI_MODE_RLS);
+
+// x input synchronize
+always @(posedge CLK or negedge NRST) begin
+    if (!NRST) begin
+        x_dn[1] <= 0; x_dn[2] <= 0; x_dn[3] <= 0; x_dn[4] <= 0;
+        x_dn[5] <= 0; x_dn[6] <= 0; x_dn[7] <= 0; x_dn[8] <= 0;
+    end else begin
+        x_dn[1] <=       X; x_dn[2] <= x_dn[1]; x_dn[3] <= x_dn[2]; x_dn[4] <= x_dn[3];
+        x_dn[5] <= x_dn[4]; x_dn[6] <= x_dn[5]; x_dn[7] <= x_dn[6]; x_dn[8] <= x_dn[8];
+    end
+end
+
+always @* begin
+    case (sync_dly)
+        3'd0: x = x_dn[1];
+        3'd1: x = x_dn[2];
+        3'd2: x = x_dn[3];
+        3'd3: x = x_dn[4];
+        3'd4: x = x_dn[5];
+        3'd5: x = x_dn[6];
+        3'd6: x = x_dn[7];
+        3'd7: x = x_dn[8];
+    endcase
+
+    // get data synchronized
+    xv[2] = x**2; xv[1] = x; xv[0] = PIVOT? 0: 1;
+    // get data from external
+    xv_cur[2] = X**2; xv_cur[1] = X; xv_cur[0] = PIVOT? 0: 1;
+end
 
 integer i, j;
 
@@ -198,10 +232,6 @@ always @(posedge CLK or negedge NRST) begin
 end
 
 always @* begin
-    // get data from external
-    x = X;
-    xv[2] = x**2; xv[1] = x; xv[0] = PIVOT? 0: 1;
-
     // initial combination register
     err = 0;
     Y = 0;
@@ -246,7 +276,7 @@ always @* begin
 
         // calculate distortion output
         // yn = hn_d1' * xn
-        veractor_pro_xt_y(1'b1, hv_d1, xv, yv);
+        veractor_pro_xt_y(1'b1, hv_d1, xv_cur, yv);
         Y = yv;
 
         // get error data from external
@@ -299,7 +329,7 @@ always @* begin
     end else begin
         // LMS mode
         // calculate distortion output
-        veractor_pro_xt_y(1'b1, lms_lut_d1, xv, y_lms);
+        veractor_pro_xt_y(1'b1, lms_lut_d1, xv_cur, y_lms);
         Y = y_lms;
 
         // get error
