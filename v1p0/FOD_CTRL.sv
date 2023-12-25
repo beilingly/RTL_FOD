@@ -194,9 +194,9 @@ end
 
 // ouput normalized phase error
 // diffphase of dig and analog
-// assign PHE_NORM = diff_phase[`WF_PHASE-`WF-1]? (diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
+assign PHE_NORM = diff_phase[`WF_PHASE-`WF-1]? (diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
 // diffphase of dig and analog with digital random dither
-assign PHE_NORM = diff_phase_rnd[`WF_PHASE-`WF-1]? (diff_phase_rnd[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase_rnd[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
+// assign PHE_NORM = diff_phase_rnd[`WF_PHASE-`WF-1]? (diff_phase_rnd[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase_rnd[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
 
 // test
 integer fp1;
