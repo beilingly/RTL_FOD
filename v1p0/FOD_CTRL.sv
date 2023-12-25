@@ -95,21 +95,35 @@ reg [`WI+`WF-1:0] fcw_os_aux_residual;
 reg [`WI+`WF-1:0] module_threshold;
 reg [`WI+`WF-1:0] nco_phase;
 reg [`WI+`WF-1:0] nco_phase_d1;
+reg [`WI+`WF-1:0] fcw_os_aux_residual_c_step, fcw_os_aux_c_step;
+reg [`WI+`WF-1:0] fcw_os_aux_residual_c, fcw_os_aux_c;
+reg signed [`WF_PHASE-1:0] dphase_c_step_d1; // dphase for offset calibration
 
 // calculate oversampling rate fmod/fpll_aux
 
 always @* begin
 	os_main_aux = FCW_PLL_MAIN_S - FCW_PLL_AUX_S;
 	fcw_os_aux = FCW_FOD; // shift right by os_main_aux
+
+	// fcw_os_aux_c_step = dphase_c_step_d1;
+	// fcw_os_aux_c = fcw_os_aux - fcw_os_aux_c_step;
+
 	fcw_os_aux_residual = ( (fcw_os_aux<<(`WI-os_main_aux)) >> (`WI-os_main_aux) ); // fracional part
+	// fcw_os_aux_residual = ( (fcw_os_aux_c<<(`WI-os_main_aux)) >> (`WI-os_main_aux) ); // fracional part
 	module_threshold = 1'b1<<(`WF+os_main_aux);
+	// calibrate fcw_os
+	fcw_os_aux_residual_c_step = dphase_c_step_d1;
 	// nco phase accumulate
-	nco_phase = nco_phase_d1 + fcw_os_aux_residual;
-	if (nco_phase >= module_threshold) begin
-		nco_phase = nco_phase - module_threshold;
-	end else begin
-		nco_phase = nco_phase;
-	end
+	fcw_os_aux_residual_c = fcw_os_aux_residual - fcw_os_aux_residual_c_step;
+	nco_phase = nco_phase_d1 + fcw_os_aux_residual_c;
+	// nco_phase = nco_phase_d1 + fcw_os_aux_residual;
+	// if (nco_phase >= module_threshold) begin
+	// 	nco_phase = nco_phase - module_threshold;
+	// end else begin
+	// 	nco_phase = nco_phase;
+	// end
+	nco_phase = nco_phase[16:0];
+
 	// nco_phase_s = nco_phase[os_main_aux]? ((nco_phase>>os_main_aux) + 1'b1): (nco_phase>>os_main_aux); // shift right and round
 end
 
@@ -146,25 +160,35 @@ reg [`WF_PHASE-1:0] nco_phase_s_rnd;
 reg signed [`WF_PHASE-1:0] diff_phase_rnd;
 reg signed [`WF_PHASE-1:0] diff_phase;
 reg signed [`WF_PHASE-1:0] dphase_c; // dphase for offset calibration
+reg signed [`WF_PHASE-1:0] dphase_c_step, dphase_c_inte;
 reg [`WF_PHASE-1:0] rand_u24;
 
 always @* begin
 	nco_phase_s = nco_phase << (`WF_PHASE-`WF-os_main_aux);
 	rand_u24 = $random>>>(8+3);
+	// rand_u24 = $random>>>(8+1);
 	nco_phase_s_rnd = nco_phase_s + rand_u24;
-	diff_phase_rnd = nco_phase_s_rnd - (dphase_m + dphase_c);
-	diff_phase = nco_phase_s - (dphase_m + dphase_c);
+	// diff_phase_rnd = nco_phase_s_rnd - (dphase_m + dphase_c);
+	// diff_phase = nco_phase_s - (dphase_m + dphase_c);
+	diff_phase_rnd = nco_phase_s_rnd - dphase_m;
+	diff_phase = nco_phase_s - dphase_m;
+	// phase sync convergence rate
+	// shift 12, 20us, error<1e-3; shift 16, 500us, error<1e-5
+	// dphase_c has a pattern with 1200ns period, maybe lead to a spur, but that can be suppressed with a digital random dither
+	// dphase_c_step = diff_phase_rnd >>> 8;
+	dphase_c_step = diff_phase_rnd[`WF_PHASE-1]? (-`WF_PHASE'd256): (`WF_PHASE'd256);
 end
 
 always @(posedge CLK or negedge NRST) begin
 	if (!NRST) begin
 		dphase_c <= 0;
-	end else begin 
-		// phase sync convergence rate
-		// shift 12, 20us, error<1e-3; shift 16, 500us, error<1e-5
-		// dphase_c has a pattern with 1200ns period, maybe lead to a spur, but that can be suppressed with a digital random dither
-		dphase_c <= (diff_phase_rnd >>> 12) + dphase_c; 
-		// dphase_c <= (diff_phase_rnd[`WF_PHASE-1]? (-`WF_PHASE'd512): (`WF_PHASE'd512)) + dphase_c;
+		dphase_c_step_d1 <= 0;
+		dphase_c_inte <= 0;
+	end else if (EN) begin 
+		dphase_c <= dphase_c_step + dphase_c; 
+		// dphase_c_step_d1 <= dphase_c_step + dphase_c_inte;
+		dphase_c_step_d1 <= dphase_c_step;
+		dphase_c_inte <= dphase_c_inte + (dphase_c_step>>>4);
 	end
 end
 
@@ -176,13 +200,14 @@ assign PHE_NORM = diff_phase_rnd[`WF_PHASE-`WF-1]? (diff_phase_rnd[`WF_PHASE-1:`
 
 // test
 integer fp1;
-real r_dphase_c, r_rand_u24, r_diff_phase_rnd, r_diff_phase;
+real r_dphase_c, r_rand_u24, r_diff_phase_rnd, r_diff_phase, r_dphase_c_inte;
 
 always @* begin
 	r_dphase_c = $signed(dphase_c) * (2.0**-`WF_PHASE);
-	r_rand_u24 = $unsigned(rand_u24) * (2.0**-`WF_PHASE);
+	r_rand_u24 = $signed(rand_u24) * (2.0**-`WF_PHASE);
 	r_diff_phase_rnd = $signed(diff_phase_rnd) * (2.0**-`WF_PHASE);
 	r_diff_phase = $signed(diff_phase) * (2.0**-`WF_PHASE);
+	r_dphase_c_inte = $signed(dphase_c_inte) * (2.0**-`WF_PHASE);
 end
 
 initial begin
@@ -255,7 +280,7 @@ CALI_RLS_PSEG U2_CALI_DTCINL_CALI_RLS_PSEG (
 .sync_dly(3'd2),
 .ERR(err),
 .PSEGS(2'd0),
-.KDTC_INIT(780.0*0.5),
+.KDTC_INIT(780.0*0.4),
 .Y(dtc_dcw)
 );
 
@@ -353,17 +378,6 @@ assign phe_remain = DSM_PHE[`WF-2:0];
 // phase sync
 wire [`WF-1:0] PHE_NORM;
 
-CALI_PHASESYNC U1_FOD_CTRL_CALI_PHASESYNC (
-.NRST(NRST),
-.CLK(CLK),
-.EN(1'b1),
-.FCW_FOD(FCW_FOD),
-.FCW_PLL_MAIN_S(3'd5),
-.FCW_PLL_AUX_S(3'd4),
-.PHE_MEASURE(PHE),
-.PHE_NORM(PHE_NORM)
-);
-
 // dtc cali
 real dtc_dcw_real;
 reg DTCCALI_EN;
@@ -373,6 +387,18 @@ initial begin
 	#20e-6;
 	DTCCALI_EN = 1;
 end
+
+CALI_PHASESYNC U1_FOD_CTRL_CALI_PHASESYNC (
+.NRST(NRST),
+.CLK(CLK),
+.EN(1'b1),
+// .EN(~DTCCALI_EN),
+.FCW_FOD(FCW_FOD),
+.FCW_PLL_MAIN_S(3'd5),
+.FCW_PLL_AUX_S(3'd4),
+.PHE_MEASURE(PHE),
+.PHE_NORM(PHE_NORM)
+);
 
 CALI_DTCINL U1_FOD_CTRL_CALI_DTCINL (
 .NRST(NRST),

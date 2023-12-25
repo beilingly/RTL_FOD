@@ -110,7 +110,7 @@ output real Y; // output RLS-Distortion data
 // internal signal
 
 // RLS signal
-real x_dn [1:8]; // sync x with err
+real x_dn [1:`Nseg]; // sync x with err
 real x;
 real xv [0:`Nx-1], xv_cur [0:`Nx-1];
 real xv_mat [0:`Nx*`Nx-1];
@@ -142,8 +142,8 @@ real lms_k [0:`Nx-1];
 
 initial begin
     lms_k[0] = 1e-1;
-    lms_k[1] = 1e-1;
-    lms_k[2] = 1e-2;
+    lms_k[1] = 2.0**-1;
+    lms_k[2] = 0;
 end
 
 // code begin

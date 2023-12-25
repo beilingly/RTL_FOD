@@ -71,7 +71,7 @@ reg [`WI+`WF-1:0] FCW_FOD;
 
 initial begin
     NARST = 0;
-    FCW_FOD = 4.27 * (2**`WF);
+    FCW_FOD = 4.23 * (2**`WF);
     #1e-9;
     NARST = 1;
 end
@@ -88,7 +88,7 @@ end
 
 always @ (posedge FDTC) begin
     p0 = $realtime - t0;
-    f0 = 1/p0/(8e9/4.27);
+    f0 = 1/p0/(8e9/4.23);
     t0 = $realtime;
 
     $fstrobe(fp1, "%3.15e", $realtime);
