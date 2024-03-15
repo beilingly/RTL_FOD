@@ -4,7 +4,35 @@
 `define MP_SEG_BIN 3
 `define MP_SEG 2**`MP_SEG_BIN
 
-`include "../dcd_rls/dcd_rls.sv"
+// -------------------------------------------------------
+// Module Name: SYNCRSTGEN
+// Function: generate synchronous reset
+// Author: Yang Yumeng Date: 4/2 2022
+// Version: v1p0, cp from BBPLL202108
+// -------------------------------------------------------
+module SYNCRSTGEN (
+CLK,
+NARST,
+NRST
+);
+
+input CLK;
+input NARST;
+output NRST;
+
+reg [2:0] rgt;
+
+assign NRST = rgt[2];
+
+always @ (posedge CLK or negedge NARST) begin
+	if (!NARST) begin
+		rgt <= 3'b000;
+	end else begin
+		rgt <= {rgt[1:0], 1'b1};
+	end
+end
+
+endmodule
 
 // -------------------------------------------------------
 // Module Name: DSM_MASH1
@@ -665,6 +693,24 @@ CLK,
 DSM_EN,
 FCW_FOD,
 PHE,
+PCALI_EN,
+FREQ_C_EN,
+FREQ_C_MODE,
+FREQ_C_KS,
+PHASE_CTRL,
+PCALI_FREQDOWN,
+PCALI_KS, // 0~16
+RT_EN,
+DTCCALI_EN,
+OFSTCALI_EN,
+PSEG, // 3: 1-segs; 2: 2-segs; 1: 4-segs; 0: 8-segs
+CALIORDER,
+KB, // -16 ~ 15
+KC, // -16 ~ 15
+KD, // -16 ~
+KDTCB_INIT,
+KDTCC_INIT,
+KDTCD_INIT,
 // output
 MMD_DCW,
 RT_DCW,
@@ -680,7 +726,27 @@ input CLK;
 input DSM_EN;
 input [`WI+`WF-1:0] FCW_FOD;
 input [`MP_SEG_BIN-1:0] PHE;
-// input [3:0] PHE;
+// phase cali
+input PCALI_EN;
+input FREQ_C_EN;
+input FREQ_C_MODE;
+input [4:0] FREQ_C_KS;
+input [9:0] PHASE_CTRL;
+input [2:0] PCALI_FREQDOWN;
+input [4:0] PCALI_KS; // 0~16
+
+// INL cali
+input RT_EN;
+input DTCCALI_EN;
+input OFSTCALI_EN;
+input [1:0] PSEG; // 3: 1-segs; 2: 2-segs; 1: 4-segs; 0: 8-segs
+input [1:0] CALIORDER;
+input [4:0] KB; // -16 ~ 15
+input [4:0] KC; // -16 ~ 15
+input [4:0] KD; // -16 ~
+input [9:0] KDTCB_INIT;
+input [9:0] KDTCC_INIT;
+input [9:0] KDTCD_INIT;
 
 output reg [5:0] MMD_DCW; // MMD div range 4~63
 output reg RT_DCW; // 0: posedge retimer; 1: negedge retimer(delay for 0.5 FPLL8G cycle)
@@ -695,63 +761,11 @@ wire [`WF-1:0] FCW_FOD_F;
 wire DSM_CAR;
 wire [`WF-1:0] DSM_PHE; // ufix, 0<x<1
 
-
-// phase cali
-reg RT_EN;
-reg PCALI_EN;
-reg FREQ_C_EN;
-reg FREQ_C_MODE;
-reg [4:0] FREQ_C_KS;
-reg [9:0] PHASE_CTRL;
-reg [2:0] PCALI_FREQDOWN;
-reg [4:0] PCALI_KS; // 0~16
 wire [`WF-1:0] PHE_NORM;
 wire [`WI+`WF-1:0] FREQ_C;
 
-initial begin
-	RT_EN = 1;
-	PCALI_EN = 1;
-	FREQ_C_EN = 0;
-	FREQ_C_MODE = 0;
-	FREQ_C_KS = 0;
-	PHASE_CTRL = 0;
-	PCALI_FREQDOWN = 0;
-	PCALI_KS = 8;
-end
-
-// INL cali
-reg DTCCALI_EN;
-reg OFSTCALI_EN;
-reg [1:0] PSEG; // 3: 1-segs; 2: 2-segs; 1: 4-segs; 0: 8-segs
-reg [1:0] CALIORDER;
-reg [4:0] KB; // -16 ~ 15
-reg [4:0] KC; // -16 ~ 15
-reg [4:0] KD; // -16 ~
-reg [9:0] KDTCB_INIT;
-reg [9:0] KDTCC_INIT;
-reg [9:0] KDTCD_INIT;
-
-initial begin
-	PSEG = 3;
-
-	CALIORDER = 2'b11;
-
-	KB = -5'd3;
-	KC = -5'd3;
-	KD = -5'd5;
-
-	KDTCB_INIT = 10'd390 * 1;
-	KDTCC_INIT = 10'd195;
-	KDTCD_INIT = 10'd0;
-
-	DTCCALI_EN = 0;
-	OFSTCALI_EN = 0;
-	#100e-6;
-	DTCCALI_EN = 1;
-	OFSTCALI_EN = 0;
-end
-
-assign NRST = NARST;
+// synchronize NARST with CLK
+SYNCRSTGEN U1_FOD_CTRL_SYNCRSTGEN ( .CLK(CLK), .NARST(NARST), .NRST(NRST) );
 
 // FOD phase adjust according PCALI 
 assign {FCW_FOD_I, FCW_FOD_F} = FCW_FOD + FREQ_C;

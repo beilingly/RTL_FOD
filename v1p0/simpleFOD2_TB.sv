@@ -149,6 +149,60 @@ initial begin
     NARST = 1;
 end
 
+// FOD SPI CTRL signal
+// phase cali
+reg PCALI_EN;
+reg FREQ_C_EN;
+reg FREQ_C_MODE;
+reg [4:0] FREQ_C_KS;
+reg [9:0] PHASE_CTRL;
+reg [2:0] PCALI_FREQDOWN;
+reg [4:0] PCALI_KS; // 0~16
+
+// INL cali
+reg RT_EN;
+reg DTCCALI_EN;
+reg OFSTCALI_EN;
+reg [1:0] PSEG; // 3: 1-segs; 2: 2-segs; 1: 4-segs; 0: 8-segs
+reg [1:0] CALIORDER;
+reg [4:0] KB; // -16 ~ 15
+reg [4:0] KC; // -16 ~ 15
+reg [4:0] KD; // -16 ~
+reg [9:0] KDTCB_INIT;
+reg [9:0] KDTCC_INIT;
+reg [9:0] KDTCD_INIT;
+
+initial begin
+	RT_EN = 1;
+	PCALI_EN = 1;
+	FREQ_C_EN = 0;
+	FREQ_C_MODE = 0;
+	FREQ_C_KS = 0;
+	PHASE_CTRL = 0;
+	PCALI_FREQDOWN = 0;
+	PCALI_KS = 8;
+end
+
+initial begin
+	PSEG = 3;
+
+	CALIORDER = 2'b11;
+
+	KB = -5'd3;
+	KC = -5'd3;
+	KD = -5'd5;
+
+	KDTCB_INIT = 10'd390 * 1;
+	KDTCC_INIT = 10'd195;
+	KDTCD_INIT = 10'd0;
+
+	DTCCALI_EN = 0;
+	OFSTCALI_EN = 0;
+	#100e-6;
+	DTCCALI_EN = 1;
+	OFSTCALI_EN = 0;
+end
+
 FOD_CTRL U0_FOD_CTRL ( .NARST (NARST), .CLK (FDTC), .DSM_EN (1'b1), .FCW_FOD(FCW_FOD), .MMD_DCW (MMD_DCW), .RT_DCW (RT_DCW), .DTC_DCW (DTC_DCW), .* );
 
 // test
