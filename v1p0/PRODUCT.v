@@ -245,3 +245,46 @@ assign prous = (proac_reg<<width_frac) + proad_reg + procb_reg + probd_reg;
 assign PROS = SP_reg? (~{1'b0, prous}+1'b1): {1'b0, prous};
 
 endmodule
+
+// -------------------------------------------------------
+// Module Name: USWI16DIV
+// Function: quotient[unsigned WI(16)]. remainder[unsigned WI(16)] = [unsigned WI(16)] / [unsigned WI(16)]
+// Author: Yang Yumeng Date: 4/8 2022
+// Version: v1p0
+// -------------------------------------------------------
+module USWI16DIV (
+DIVA,
+DIVB,
+QUO,
+REM
+);
+
+parameter WI = 16;
+
+input [WI-1:0] DIVA;
+input [WI-1:0] DIVB;
+output [WI-1:0] QUO;
+output [WI-1:0] REM;
+// DIVA / DIVB = QUO ... REM
+
+integer i;
+reg [2*WI-1:0] tempa;
+reg [2*WI-1:0] tempb;
+reg [2*WI-1:0] flag;
+
+// divition
+always @(DIVA or DIVB) begin
+	tempa = {{WI{1'b0}}, DIVA};
+	tempb = {DIVB, {WI{1'b0}}};
+	for (i=0; i<WI; i=i+1) begin
+		tempa = tempa << 1'b1;
+		flag = tempa - tempb;
+		if (flag[2*WI-1]) tempa = tempa; // tempa < tempb
+		else tempa = tempa - tempb + 1'b1; // tempa >= tempb
+	end
+end
+
+assign QUO = tempa[WI-1:0];
+assign REM = tempa[2*WI-1:WI];
+
+endmodule
