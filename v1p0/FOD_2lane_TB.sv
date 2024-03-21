@@ -7,12 +7,13 @@
 `define MP_SEG 2**`MP_SEG_BIN
 
 // -------------------------------------------------------
-// Module Name: simpleFOD2_TB
-// Function: A simple simulation for parallel FODs
-// Author: Yang Yumeng Date: 11/13 2023
+// Module Name: FOD_2lane_TB
+// Function: the top testbench for 2lane fos
+// Author: Yang Yumeng Date: 2024-3-20
 // Version: v1p0
 // -------------------------------------------------------
-module simpleFOD2_TB;
+module FOD_2lane_TB;
+
 parameter real fin = 250e6;
 parameter real fcw_pll_main = 32;
 parameter real fcw_pll_aux = 4;
@@ -60,49 +61,29 @@ initial begin
     end
 end
 
-// auxiliary PLL outputs 4G clock in 8 interleave phases
-wire AUXPLL_PD;
-wire [6:0] DCTRL_F;
-
-// AUXPLL U0_AUXPLL ( .fin(fin), .fcw_pll_aux(fcw_pll_aux), .FMP(FMP) );
-// DLL_PN U0_DLL ( .DCTRL_C(6'd32), .DCTRL_F(DCTRL_F), .MPH(FMP) );
+// multi-phases divider outputs 1G clock in 8 interleave phases
 MPDIV8 U0_MPDIV8 ( .NARST(NARST), .CLK(FPLL8G), .FMP(FMP), .FMP_RND(FMP_RND) );
-
-// // aux pll phase detect
-// auxpll_pd U0_auxpll_pd ( .REF250M(REF250M), .CK4G(FMP[0]), .PD(AUXPLL_PD) );
-// TP2DLFIIRX2 U0_TP2DLFIIRX2 ( .NRST(NARST), .CKVD(REF250M), .PDE(AUXPLL_PD), .DLFEN(1'b1), .KPS(-6'sd2), .KIS(-6'sd10), .KIIR1S(-6'sd2), .KIIR2S(-6'sd2), .IIR1EN(1'b0), .IIR2EN(1'b0), .DSM1STEN(1'b1), .DCTRL(DCTRL_F) );
 
 // FOD analog module
 mmd_5stage U0_mmd_5stage ( .CKV (FPLL8G), .DIVNUM (MMD_DCW), .CKVD (FDIV) );
 retimer_pos_neg U0_retimer_pos_neg ( .D (FDIV), .CK (FPLL8G), .POLARITY (RT_DCW), .OUT (FDIVRT) );
-
-// wire [9:0] dtc_dcw;
-// assign dtc_dcw = U0_FOD_CTRL.U1_FOD_CTRL_CALI_DTCINL.dtc_dcw_reg3;
-
 dtc U0_dtc ( .CKIN (FDIVRT), .CKOUT (FDTC), .DCW (DTC_DCW) );
 
 // 500M interleaved clks
 wire [3:0] DIG_CLK;
 MPDIV4 U0_MPDIV4 ( .NARST(NARST), .CLK(FDTC), .FMP(DIG_CLK) );
-// dig-ana interface
 
 
 // Phase Detect Samplers Array
 // reg [`MP_SEG-1:0] PSAMP;
 reg [4*`MP_SEG_BIN-1:0] PHE_X4;
-// wire FDTCRND;
-// reg [3:0] PHE;
-
-// // dtcrand U0_dtcrand ( .CKIN(FDTC), .CKOUT(FDTCRND) );
-// always @ (posedge FDTC) begin // freq 2G
-//     PSAMP <= FMP_RND;
-// end
 
 // sample FMD_RND with time-interleaved clk(500M)
 reg [`MP_SEG-1:0] psamp;
 
 always @ (posedge FDTC) begin // freq 2G
     psamp <= FMP_RND;
+    // psamp <= FMP;
 end
 
 DCWRT U0_DCWRT ( .* );
@@ -177,96 +158,49 @@ always @* begin
 end
 
 // FOD Digital Controller
-reg [`WI+`WF-1:0] FCW_FOD;
-real rfcw;
-
-initial begin
-    NARST = 0;
-    rfcw = 4.72;
-    FCW_FOD = rfcw * (2**`WF);
-    #1e-9;
-    NARST = 1;
-end
+wire [`WI+`WF-1:0] FCW_FOD;
 
 // FOD SPI CTRL signal
 // phase cali
-reg PCALI_EN;
-reg FREQ_C_EN;
-reg FREQ_C_MODE;
-reg [4:0] FREQ_C_KS;
-reg [9:0] PHASE_CTRL;
-reg [2:0] PCALI_FREQDOWN;
-reg [4:0] PCALI_KS; // 0~16
+wire PCALI_EN;
+wire FREQ_C_EN;
+wire FREQ_C_MODE;
+wire [4:0] FREQ_C_KS;
+wire [9:0] PHASE_CTRL;
+wire [2:0] PCALI_FREQDOWN;
+wire [4:0] PCALI_KS; // 0~16
 
 // INL cali
-reg RT_EN;
-reg DTCCALI_EN;
-reg OFSTCALI_EN;
-reg [1:0] PSEG; // 3: 1-segs; 2: 2-segs; 1: 4-segs; 0: 8-segs
-reg [1:0] CALIORDER;
-reg [4:0] KB; // -16 ~ 15
-reg [4:0] KC; // -16 ~ 15
-reg [4:0] KD; // -16 ~
-reg [9:0] KDTCB_INIT;
-reg [9:0] KDTCC_INIT;
-reg [9:0] KDTCD_INIT;
-
-initial begin
-	RT_EN = 1;
-	PCALI_EN = 1;
-	FREQ_C_EN = 0;
-	FREQ_C_MODE = 0;
-	FREQ_C_KS = 0;
-	PHASE_CTRL = 0;
-	PCALI_FREQDOWN = 0;
-	PCALI_KS = 8;
-end
-
-initial begin
-	PSEG = 3;
-
-	CALIORDER = 2'b11;
-
-	KB = -5'd2;
-	KC = -5'd3;
-	KD = -5'd5;
-
-	KDTCB_INIT = 10'd390 * 1;
-	KDTCC_INIT = 10'd195;
-	KDTCD_INIT = 10'd0;
-
-	DTCCALI_EN = 0;
-	OFSTCALI_EN = 0;
-	#20e-6;
-	DTCCALI_EN = 0;
-	OFSTCALI_EN = 0;
-end
+wire RT_EN;
+wire DTCCALI_EN;
+wire OFSTCALI_EN;
+wire [1:0] PSEG; // 3: 1-segs; 2: 2-segs; 1: 4-segs; 0: 8-segs
+wire [1:0] CALIORDER;
+wire [4:0] KB; // -16 ~ 15
+wire [4:0] KC; // -16 ~ 15
+wire [4:0] KD; // -16 ~
+wire [9:0] KDTCB_INIT;
+wire [9:0] KDTCC_INIT;
+wire [9:0] KDTCD_INIT;
 
 // phase sync & freq hop
 reg SYS_REF;
-reg SYS_EN;
-reg DSM_SYNC_NRST_EN;
-reg NCO_SYNC_NRST_EN;
-reg FREQ_HOP;
+wire SYS_EN;
+wire DSM_SYNC_NRST_EN;
+wire NCO_SYNC_NRST_EN;
+wire FREQ_HOP;
 
 initial begin
     SYS_REF = 0;
-    DSM_SYNC_NRST_EN = 1;
-    NCO_SYNC_NRST_EN = 1;
-    FREQ_HOP = 0;
 
     forever #(1/fin*128) begin
         SYS_REF = ~SYS_REF;
     end
 end
 
-initial begin
-    SYS_EN = 0;
-    # 20e-6;
-    SYS_EN = 1;
-end
-
 FOD_CTRL U0_FOD_CTRL ( .NARST (NARST), .CLK (DIG_CLK[0]), .DSM_EN (1'b1), .FCW_FOD(FCW_FOD), .MMD_DCW_X4 (MMD_DCW_X4), .RT_DCW_X4 (RT_DCW_X4), .DTC_DCW_X4 (DTC_DCW_X4), .PHE_X4(PHE_X4), .* );
+
+FOD_SPI U0_FOD_SPI ( .* );
 
 // test
 real p0, t0, f0;
@@ -278,10 +212,11 @@ end
 
 always @ (posedge FDTC) begin
     p0 = $realtime - t0;
-    f0 = 1/p0/(fpllmain/rfcw);
+    f0 = 1/p0/(fpllmain/U0_FOD_SPI.rfcw);
     t0 = $realtime;
 
     $fstrobe(fp1, "%3.15e", $realtime);
 end
+
 
 endmodule

@@ -1,14 +1,14 @@
 `timescale 1s/1fs
 
 // ------------------------------------------------------------
-// Module Name: MPDIV
+// Module Name: MPDIV8
 // Function: outputs 1G clocks in interleave 8 phases
 //              these phases are dithered within a CLK period range
 // Authot: Yumeng Yang Date: 2024-3-15
 // Version: v1p0
 // ------------------------------------------------------------
 
-module MPDIV (
+module MPDIV8 (
 NARST,
 CLK,
 FMP_RND,
@@ -72,5 +72,43 @@ endgenerate
 
 assign FMP_RND = mpck_dly & mpck;
 assign FMP = mpck;
+
+endmodule
+
+// ------------------------------------------------------------
+// Module Name: MPDIV4
+// Function: outputs 500M clocks in interleave 4 phases according to FOD output
+// Authot: Yumeng Yang Date: 2024-3-16
+// Version: v1p0
+// ------------------------------------------------------------
+
+module MPDIV4 (
+NARST,
+CLK,
+FMP
+);
+
+input NARST;
+input CLK;
+output reg [3:0] FMP;
+
+
+// multi-phases divider
+reg [1:0] cnt;
+
+initial begin
+    cnt = 0;
+end
+
+always @ (posedge CLK) begin
+    cnt <= cnt + 1;
+end
+
+always @ (posedge CLK) begin
+    FMP[0] <= (cnt>=0) && (cnt<=1);
+    FMP[1] <= (cnt>=1) && (cnt<=2);
+    FMP[2] <= (cnt>=2) && (cnt<=3);
+    FMP[3] <= (cnt>=3) || (cnt<=0);
+end
 
 endmodule
