@@ -73,7 +73,6 @@ dtc U0_dtc ( .CKIN (FDIVRT), .CKOUT (FDTC), .DCW (DTC_DCW) );
 wire [3:0] DIG_CLK;
 MPDIV4 U0_MPDIV4 ( .NARST(NARST), .CLK(FDTC), .FMP(DIG_CLK) );
 
-
 // Phase Detect Samplers Array
 // reg [`MP_SEG-1:0] PSAMP;
 reg [4*`MP_SEG_BIN-1:0] PHE_X4;
@@ -90,11 +89,14 @@ DCWRT U0_DCWRT ( .* );
 
 
 // Phase Detect Samplers
-real t_pos_fdtc, t_pos_fpllaux4g_nxt;
+real t_res;
+real t_pos_fdtc, t_pos_fpllaux4g_nxt, t_quant;
 real phase_ana_norm, phase_ana_norm_d1, phase_dig_norm, phase_diff;
 real phase_ana_norm_0, phase_ana_norm_1, phase_ana_norm_2, phase_ana_norm_3;
 real phase_ana_norm_0_clk1, phase_ana_norm_1_clk2, phase_ana_norm_2_clk3, phase_ana_norm_3_clk0;
 real phase_ana_norm_bus [3:0];
+
+initial t_res = 10e-12;
 
 always @ (posedge FMP[0]) begin
     t_pos_fpllaux4g_nxt = $realtime;
@@ -103,27 +105,37 @@ end
 always @ (posedge DIG_CLK[0]) begin // freq 500M
     t_pos_fdtc = $realtime;
     phase_ana_norm_d1 = phase_ana_norm;
-    phase_ana_norm = (t_pos_fdtc - t_pos_fpllaux4g_nxt)*fpllaux;
+    t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
+    // t_quant = $floor(t_quant/10e-12) * 10e-12;
+    phase_ana_norm = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[0]) begin // freq 500M
     t_pos_fdtc = $realtime;
-    phase_ana_norm_0 = (t_pos_fdtc - t_pos_fpllaux4g_nxt)*fpllaux;
+    t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
+    t_quant = $floor(t_quant/t_res) * t_res;
+    phase_ana_norm_0 = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[1]) begin // freq 500M
     t_pos_fdtc = $realtime;
-    phase_ana_norm_1 = (t_pos_fdtc - t_pos_fpllaux4g_nxt)*fpllaux;
+    t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
+    t_quant = $floor(t_quant/t_res) * t_res;
+    phase_ana_norm_1 = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[2]) begin // freq 500M
     t_pos_fdtc = $realtime;
-    phase_ana_norm_2 = (t_pos_fdtc - t_pos_fpllaux4g_nxt)*fpllaux;
+    t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
+    t_quant = $floor(t_quant/t_res) * t_res;
+    phase_ana_norm_2 = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[3]) begin // freq 500M
     t_pos_fdtc = $realtime;
-    phase_ana_norm_3 = (t_pos_fdtc - t_pos_fpllaux4g_nxt)*fpllaux;
+    t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
+    t_quant = $floor(t_quant/t_res) * t_res;
+    phase_ana_norm_3 = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[1]) begin

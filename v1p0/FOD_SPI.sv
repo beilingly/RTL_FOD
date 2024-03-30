@@ -71,7 +71,7 @@ real rfcw;
 
 initial begin
     NARST = 0;
-    rfcw = 4.72;
+    rfcw = 4.75;
     FCW_FOD = rfcw * (2**`WF);
     #1e-9;
     NARST = 1;

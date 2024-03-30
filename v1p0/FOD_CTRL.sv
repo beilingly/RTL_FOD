@@ -319,10 +319,10 @@ reg [`WF_PHASE-1:0] dphase_m;
 
 // real phase_ana_norm, phase_ana_norm_0, phase_ana_norm_1, phase_ana_norm_2, phase_ana_norm_3;
 
-// assign phase_ana_norm_0 = simpleFOD2_TB.phase_ana_norm_bus[0];
-// assign phase_ana_norm_1 = simpleFOD2_TB.phase_ana_norm_bus[1];
-// assign phase_ana_norm_2 = simpleFOD2_TB.phase_ana_norm_bus[2];
-// assign phase_ana_norm_3 = simpleFOD2_TB.phase_ana_norm_bus[3];
+// assign phase_ana_norm_0 = FOD_2lane_TB.phase_ana_norm_bus[0];
+// assign phase_ana_norm_1 = FOD_2lane_TB.phase_ana_norm_bus[1];
+// assign phase_ana_norm_2 = FOD_2lane_TB.phase_ana_norm_bus[2];
+// assign phase_ana_norm_3 = FOD_2lane_TB.phase_ana_norm_bus[3];
 
 // always @* begin
 // 	if (k==0) phase_ana_norm = phase_ana_norm_0;
