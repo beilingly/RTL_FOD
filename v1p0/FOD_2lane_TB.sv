@@ -1,6 +1,6 @@
 `timescale 1s/1fs
 
-`define WI 6
+`define WI 7
 `define WF 16
 `define WF_PHASE 24
 `define MP_SEG_BIN 3
@@ -26,10 +26,10 @@ reg [`MP_SEG-1:0] FMP_RND;
 wire FDIV;
 wire FDIVRT;
 wire FDTC;
-wire [4*6-1:0] MMD_DCW_X4;
+wire [4*7-1:0] MMD_DCW_X4;
 wire [3:0] RT_DCW_X4; // select whether use pos or neg as retimer clock 
 wire [4*10-1:0] DTC_DCW_X4;
-wire [6-1:0] MMD_DCW;
+wire [7-1:0] MMD_DCW;
 wire  RT_DCW; // select whether use pos or neg as retimer clock 
 wire [10-1:0] DTC_DCW;
 
@@ -65,7 +65,7 @@ end
 MPDIV8 U0_MPDIV8 ( .NARST(NARST), .CLK(FPLL8G), .FMP(FMP), .FMP_RND(FMP_RND) );
 
 // FOD analog module
-mmd_5stage U0_mmd_5stage ( .CKV (FPLL8G), .DIVNUM (MMD_DCW), .CKVD (FDIV) );
+mmd_6stage U0_mmd_6stage ( .CKV (FPLL8G), .DIVNUM (MMD_DCW), .CKVD (FDIV) );
 retimer_pos_neg U0_retimer_pos_neg ( .D (FDIV), .CK (FPLL8G), .POLARITY (RT_DCW), .OUT (FDIVRT) );
 dtc U0_dtc ( .CKIN (FDIVRT), .CKOUT (FDTC), .DCW (DTC_DCW) );
 
@@ -113,28 +113,28 @@ end
 always @ (posedge DIG_CLK[0]) begin // freq 500M
     t_pos_fdtc = $realtime;
     t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
-    t_quant = $floor(t_quant/t_res) * t_res;
+    // t_quant = $floor(t_quant/t_res) * t_res;
     phase_ana_norm_0 = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[1]) begin // freq 500M
     t_pos_fdtc = $realtime;
     t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
-    t_quant = $floor(t_quant/t_res) * t_res;
+    // t_quant = $floor(t_quant/t_res) * t_res;
     phase_ana_norm_1 = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[2]) begin // freq 500M
     t_pos_fdtc = $realtime;
     t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
-    t_quant = $floor(t_quant/t_res) * t_res;
+    // t_quant = $floor(t_quant/t_res) * t_res;
     phase_ana_norm_2 = t_quant*fpllaux;
 end
 
 always @ (posedge DIG_CLK[3]) begin // freq 500M
     t_pos_fdtc = $realtime;
     t_quant = t_pos_fdtc - t_pos_fpllaux4g_nxt;
-    t_quant = $floor(t_quant/t_res) * t_res;
+    // t_quant = $floor(t_quant/t_res) * t_res;
     phase_ana_norm_3 = t_quant*fpllaux;
 end
 

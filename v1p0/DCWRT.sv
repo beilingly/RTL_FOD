@@ -25,10 +25,10 @@ PHE_X4
 input NARST;
 input [3:0] DIG_CLK;
 input FDTC;
-input [4*6-1:0] MMD_DCW_X4;
+input [4*7-1:0] MMD_DCW_X4;
 input [4*10-1:0] DTC_DCW_X4;
 input [3:0] RT_DCW_X4;
-output reg [6-1:0] MMD_DCW;
+output reg [7-1:0] MMD_DCW;
 output reg [10-1:0] DTC_DCW;
 output reg RT_DCW; // select whether use pos or neg as retimer clock 
 
@@ -42,14 +42,13 @@ reg [10-1:0] DTC_DCW_0_clk0pos;
 reg [10-1:0] DTC_DCW_1_clk0pos;
 reg [10-1:0] DTC_DCW_2_clk2pos;
 reg [10-1:0] DTC_DCW_3_clk2pos;
-reg [10-1:0] dcw_comb;
+reg [10-1:0] dcw_comb, dcw_comb_d1;
 
 initial begin
     DTC_DCW_0_clk0pos = 0;
     DTC_DCW_1_clk0pos = 0;
     DTC_DCW_2_clk2pos = 0;
     DTC_DCW_3_clk2pos = 0;
-    dcw_comb = 0;
 end
 
 always @* begin
@@ -63,55 +62,89 @@ always @ (posedge DIG_CLK[2]) begin
 end
 
 always @* begin
+    // case (DIG_CLK)
+    //     4'b0110: dcw_comb = DTC_DCW_0_clk0pos;
+    //     4'b1100: dcw_comb = DTC_DCW_1_clk0pos;
+    //     4'b1001: dcw_comb = DTC_DCW_2_clk2pos;
+    //     4'b0011: dcw_comb = DTC_DCW_3_clk2pos;
+    //     default: dcw_comb = DTC_DCW_0_clk0pos;
+    // endcase
     case (DIG_CLK)
-        4'b0110: dcw_comb = DTC_DCW_0_clk0pos;
-        4'b1100: dcw_comb = DTC_DCW_1_clk0pos;
-        4'b1001: dcw_comb = DTC_DCW_2_clk2pos;
-        4'b0011: dcw_comb = DTC_DCW_3_clk2pos;
+        4'b0011: dcw_comb = DTC_DCW_0_clk0pos;
+        4'b0110: dcw_comb = DTC_DCW_1_clk0pos;
+        4'b1100: dcw_comb = DTC_DCW_2_clk2pos;
+        4'b1001: dcw_comb = DTC_DCW_3_clk2pos;
         default: dcw_comb = DTC_DCW_0_clk0pos;
     endcase
 end
 
 always @ (posedge FDTC or negedge NARST) begin
     if (!NARST) begin
+        dcw_comb_d1 <= 0;
         DTC_DCW <= 0;
     end else begin
-        DTC_DCW <= dcw_comb;
+        dcw_comb_d1 <= dcw_comb;
+        DTC_DCW <= dcw_comb_d1;
     end
 end
 
 // MMD DCW retimer
 // dcw2-3 @ clk2 pos
-reg [6-1:0] MMD_DCW_0_clk0pos;
-reg [6-1:0] MMD_DCW_1_clk0pos;
-reg [6-1:0] MMD_DCW_2_clk2pos;
-reg [6-1:0] MMD_DCW_3_clk2pos;
+reg [7-1:0] MMD_DCW_0_clk0pos;
+reg [7-1:0] MMD_DCW_1_clk0pos;
+reg [7-1:0] MMD_DCW_2_clk2pos;
+reg [7-1:0] MMD_DCW_3_clk2pos;
+reg [4*7-1:0] MMD_DCW_X4_d1;
+reg [7-1:0] mmd_dcw_comb;
+
+always @ (posedge DIG_CLK[0] or negedge NARST) begin
+    if (!NARST) begin
+        MMD_DCW_X4_d1 <= {4{7'd4}};
+    end else begin
+        MMD_DCW_X4_d1 <= MMD_DCW_X4;
+    end
+end
 
 initial begin
-    MMD_DCW_0_clk0pos = 6'd4;
-    MMD_DCW_1_clk0pos = 6'd4;
-    MMD_DCW_2_clk2pos = 6'd4;
-    MMD_DCW_3_clk2pos = 6'd4;
+    MMD_DCW_0_clk0pos = 7'd4;
+    MMD_DCW_1_clk0pos = 7'd4;
+    MMD_DCW_2_clk2pos = 7'd4;
+    MMD_DCW_3_clk2pos = 7'd4;
 end
 
 always @* begin
-    MMD_DCW_0_clk0pos = MMD_DCW_X4[1*6-1-:6];
-    MMD_DCW_1_clk0pos = MMD_DCW_X4[2*6-1-:6];
+    MMD_DCW_0_clk0pos = MMD_DCW_X4_d1[1*7-1-:7];
+    MMD_DCW_1_clk0pos = MMD_DCW_X4_d1[2*7-1-:7];
 end
 
 always @ (posedge DIG_CLK[2]) begin
-    MMD_DCW_2_clk2pos <= MMD_DCW_X4[3*6-1-:6];
-    MMD_DCW_3_clk2pos <= MMD_DCW_X4[4*6-1-:6];
+    MMD_DCW_2_clk2pos <= MMD_DCW_X4_d1[3*7-1-:7];
+    MMD_DCW_3_clk2pos <= MMD_DCW_X4_d1[4*7-1-:7];
 end
 
 always @* begin
+    // case (DIG_CLK)
+    //     4'b0110: MMD_DCW = MMD_DCW_0_clk0pos;
+    //     4'b1100: MMD_DCW = MMD_DCW_1_clk0pos;
+    //     4'b1001: MMD_DCW = MMD_DCW_2_clk2pos;
+    //     4'b0011: MMD_DCW = MMD_DCW_3_clk2pos;
+    //     default: MMD_DCW = MMD_DCW_0_clk0pos;
+    // endcase
     case (DIG_CLK)
-        4'b0110: MMD_DCW = MMD_DCW_0_clk0pos;
-        4'b1100: MMD_DCW = MMD_DCW_1_clk0pos;
-        4'b1001: MMD_DCW = MMD_DCW_2_clk2pos;
-        4'b0011: MMD_DCW = MMD_DCW_3_clk2pos;
-        default: MMD_DCW = MMD_DCW_0_clk0pos;
+        4'b1001: mmd_dcw_comb = MMD_DCW_0_clk0pos;
+        4'b0011: mmd_dcw_comb = MMD_DCW_1_clk0pos;
+        4'b0110: mmd_dcw_comb = MMD_DCW_2_clk2pos;
+        4'b1100: mmd_dcw_comb = MMD_DCW_3_clk2pos;
+        default: mmd_dcw_comb = MMD_DCW_0_clk0pos;
     endcase
+end
+
+always @ (posedge FDTC or negedge NARST) begin
+    if (!NARST) begin
+        MMD_DCW <= 4;
+    end else begin
+        MMD_DCW <= mmd_dcw_comb;
+    end
 end
 
 // RT DCW retimer

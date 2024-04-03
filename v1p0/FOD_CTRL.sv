@@ -1,4 +1,4 @@
-`define WI 6
+`define WI 7
 `define WF 16
 `define WF_PHASE 24
 `define MP_SEG_BIN 3
@@ -1079,7 +1079,7 @@ input NCO_SYNC_NRST_EN;
 // freq hop
 input FREQ_HOP;
 
-output reg [4*6-1:0] MMD_DCW_X4; // MMD div range 4~63
+output reg [4*7-1:0] MMD_DCW_X4; // MMD div range 4~127
 output reg [3:0] RT_DCW_X4; // 0: posedge retimer; 1: negedge retimer(delay for 0.5 FPLL8G cycle)
 output [4*10-1:0] DTC_DCW_X4;
 
@@ -1138,25 +1138,25 @@ end
 // DSM_CAR 	-> MMD_DCW_X4: 3p
 // DSM_PHE	-> RT_DCW_X4: 3p
 // 			-> DTC_DCW_X4: 3p
-reg [4*6-1:0] mmd_dcw_x4_d1, mmd_dcw_x4_d2;
+reg [4*7-1:0] mmd_dcw_x4_d1, mmd_dcw_x4_d2;
 reg [3:0] rt_dcw_x4_d1, rt_dcw_x4_d2;
 always @ (posedge CLK or negedge NRST) begin
 	
 	if (!NRST) begin
-		mmd_dcw_x4_d1 <= {4{6'd4}};
-		mmd_dcw_x4_d2 <= {4{6'd4}};
-		MMD_DCW_X4 <= {4{6'd4}};
+		mmd_dcw_x4_d1 <= {4{7'd4}};
+		mmd_dcw_x4_d2 <= {4{7'd4}};
+		MMD_DCW_X4 <= {4{7'd4}};
 
 		rt_dcw_x4_d1 <= 0;
 		rt_dcw_x4_d2 <= 0;
 		RT_DCW_X4 <= 0;
 	end else begin
-		mmd_dcw_x4_d1[1*6-1-:6] <= FCW_FOD_I_X4[1*`WI-1-:`WI] + DSM_CAR_X4[0];
-		mmd_dcw_x4_d1[2*6-1-:6] <= FCW_FOD_I_X4[2*`WI-1-:`WI] + DSM_CAR_X4[1];
-		mmd_dcw_x4_d1[3*6-1-:6] <= FCW_FOD_I_X4[3*`WI-1-:`WI] + DSM_CAR_X4[2];
-		mmd_dcw_x4_d1[4*6-1-:6] <= FCW_FOD_I_X4[4*`WI-1-:`WI] + DSM_CAR_X4[3];
+		mmd_dcw_x4_d1[1*7-1-:7] <= FCW_FOD_I_X4[1*`WI-1-:`WI] + DSM_CAR_X4[0];
+		mmd_dcw_x4_d1[2*7-1-:7] <= FCW_FOD_I_X4[2*`WI-1-:`WI] + DSM_CAR_X4[1];
+		mmd_dcw_x4_d1[3*7-1-:7] <= FCW_FOD_I_X4[3*`WI-1-:`WI] + DSM_CAR_X4[2];
+		mmd_dcw_x4_d1[4*7-1-:7] <= FCW_FOD_I_X4[4*`WI-1-:`WI] + DSM_CAR_X4[3];
 		mmd_dcw_x4_d2 <= mmd_dcw_x4_d1;
-		MMD_DCW_X4 <= mmd_dcw_x4_d2;
+		MMD_DCW_X4 <= mmd_dcw_x4_d1;
 
 		rt_dcw_x4_d1 <= phe_quant_x4;
 		rt_dcw_x4_d2 <= rt_dcw_x4_d1;

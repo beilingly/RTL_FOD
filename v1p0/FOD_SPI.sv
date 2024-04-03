@@ -1,6 +1,6 @@
 `timescale 1s/1fs
 
-`define WI 6
+`define WI 7
 `define WF 16
 `define WF_PHASE 24
 `define MP_SEG_BIN 3
