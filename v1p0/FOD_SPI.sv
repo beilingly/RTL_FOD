@@ -33,6 +33,8 @@ KD,
 KDTCB_INIT,
 KDTCC_INIT,
 KDTCD_INIT,
+FCW_DN_EN,
+FCW_DN_WEIGHT,
 SYS_EN,
 DSM_SYNC_NRST_EN,
 NCO_SYNC_NRST_EN,
@@ -59,6 +61,8 @@ output [4:0] KD;
 output [9:0] KDTCB_INIT;
 output [9:0] KDTCC_INIT;
 output [9:0] KDTCD_INIT;
+output FCW_DN_EN;
+output [1:0] FCW_DN_WEIGHT;
 output SYS_EN;
 output DSM_SYNC_NRST_EN;
 output NCO_SYNC_NRST_EN;
@@ -71,7 +75,7 @@ real rfcw;
 
 initial begin
     NARST = 0;
-    rfcw = 4.75;
+    rfcw = 4+0.25;
     FCW_FOD = rfcw * (2**`WF);
     #1e-9;
     NARST = 1;
@@ -99,6 +103,8 @@ reg [4:0] KD; // -16 ~
 reg [9:0] KDTCB_INIT;
 reg [9:0] KDTCC_INIT;
 reg [9:0] KDTCD_INIT;
+reg FCW_DN_EN;
+reg [1:0] FCW_DN_WEIGHT;
 
 
 initial begin
@@ -110,6 +116,7 @@ initial begin
 	PHASE_CTRL = 0;
 	PCALI_FREQDOWN = 0;
 	PCALI_KS = 8;
+	FCW_DN_WEIGHT = 2;
 end
 
 initial begin
@@ -121,10 +128,11 @@ initial begin
 	KC = -5'd3;
 	KD = -5'd5;
 
-	KDTCB_INIT = 10'd390 * 1;
+	KDTCB_INIT = 10'd390 * 0.9;
 	KDTCC_INIT = 10'd195;
 	KDTCD_INIT = 10'd0;
 
+	FCW_DN_EN = 1;
 	DTCCALI_EN = 0;
 	OFSTCALI_EN = 0;
 	#20e-6;

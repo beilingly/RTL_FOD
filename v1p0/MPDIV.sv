@@ -113,10 +113,15 @@ reg [5:0] rand6bit [7:0];
 wire [5:0] rand6bit_lfsr;
 real delay_linear [7:0], delay_nonlinear [7:0], delay_tot [7:0];
 
+reg RND_EN;
+initial begin
+    RND_EN = 1;
+end
+
 LFSR9_RST1 U0_LFSR9 (
 .CLK(mpck[0]),
 .NRST(NARST),
-.EN(1'b1),
+.EN(RND_EN),
 .URN6B(rand6bit_lfsr),
 .URN64T()
 );

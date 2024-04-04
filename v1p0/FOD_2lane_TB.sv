@@ -194,6 +194,8 @@ wire [4:0] KD; // -16 ~
 wire [9:0] KDTCB_INIT;
 wire [9:0] KDTCC_INIT;
 wire [9:0] KDTCD_INIT;
+wire FCW_DN_EN;
+wire [1:0] FCW_DN_WEIGHT;
 
 // phase sync & freq hop
 reg SYS_REF;
