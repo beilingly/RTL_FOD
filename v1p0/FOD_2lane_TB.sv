@@ -14,9 +14,9 @@
 // -------------------------------------------------------
 module FOD_2lane_TB;
 
-parameter real fin = 250e6;
-parameter real fcw_pll_main = 32;
-parameter real fcw_pll_aux = 4;
+parameter real fin = 500e6;
+parameter real fcw_pll_main = 24;
+parameter real fcw_pll_aux = fcw_pll_main/8;
 
 reg NARST;
 reg REF250M;
@@ -193,7 +193,8 @@ wire [4:0] KC; // -16 ~ 15
 wire [4:0] KD; // -16 ~
 wire [9:0] KDTCB_INIT;
 wire [9:0] KDTCC_INIT;
-wire [9:0] KDTCD_INIT;
+wire [9:0] KDTCD_INIT0;
+wire [9:0] KDTCD_INIT1;
 wire FCW_DN_EN;
 wire [1:0] FCW_DN_WEIGHT;
 
@@ -212,7 +213,18 @@ initial begin
     end
 end
 
-FOD_CTRL U0_FOD_CTRL ( .NARST (NARST), .CLK (DIG_CLK[0]), .DSM_EN (1'b1), .FCW_FOD(FCW_FOD), .MMD_DCW_X4 (MMD_DCW_X4), .RT_DCW_X4 (RT_DCW_X4), .DTC_DCW_X4 (DTC_DCW_X4), .PHE_X4(PHE_X4), .* );
+// for test
+wire [9:0] DPH_C_CUT;
+reg [1:0] SECSEL_TEST; // 0 -- kdtcB/ 2 -- kdtcC/ 3 -- kdtcD
+reg [2:0] REGSEL_TEST; // reg0~7
+wire [10:0] LUT_INT;
+
+initial begin
+    SECSEL_TEST = 0;
+    REGSEL_TEST = 0;
+end
+
+FOD_CTRL U0_FOD_CTRL ( .NARST (NARST), .CLK (DIG_CLK[0]), .DSM_EN (1'b1), .FCW_FOD(FCW_FOD), .MMD_DCW_X4 (MMD_DCW_X4), .RT_DCW_X4 (RT_DCW_X4), .DTC_DCW_X4 (DTC_DCW_X4), .PHE_X4(PHE_X4), .DTC_EN(1'b1), .* );
 
 FOD_SPI U0_FOD_SPI ( .* );
 

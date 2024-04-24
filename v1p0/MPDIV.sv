@@ -104,7 +104,7 @@ always @* begin
 end
 
 // clk dither
-parameter real t_res = 125e-12/64 * 1;
+parameter real t_res = 1/12e9/64 * 1;
 parameter real t_ofst = 0;
 real t_delta;
 reg [7:0] mpck_dly;
@@ -139,7 +139,8 @@ generate
             rand6bit[geni] = {$random} %64;
             $fstrobe(fp1, "%3.13e %d %d", $realtime, $unsigned(rand6bit[0]), $unsigned(rand6bit_lfsr));
             delay_linear[geni] = $unsigned(rand6bit_lfsr) * t_res;
-            delay_nonlinear[geni] = 0 * $sin(1.0*rand6bit[geni]/64 * 3.14) * t_res;
+            // 0.5 LSB INL
+            delay_nonlinear[geni] = 0.5 * $sin(1.0*rand6bit_lfsr/64 * 3.14) * t_res;
             delay_tot[geni] = t_ofst + delay_linear[geni] + delay_nonlinear[geni];
         end
 

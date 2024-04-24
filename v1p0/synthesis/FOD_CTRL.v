@@ -1,8 +1,60 @@
-`define WI 6
+`timescale 1s/1fs
+
+`define WI 7
 `define WF 16
 `define WF_PHASE 24
 `define MP_SEG_BIN 3
 `define MP_SEG 2**`MP_SEG_BIN
+// -------------------------------------------------------
+// Module Name: FCW_LFSR9_RST1
+// Function: 9 bit LFSR used in FCW for dither, set initial state to 1
+// Author: Yang Yumeng Date: 3/16 2023
+// Version: v1p0, according to FOD v1p0
+// -------------------------------------------------------
+module FCW_LFSR10_RST1 (
+CLK,
+NRST,
+EN,
+URN10B
+);
+
+input CLK;
+input NRST;
+input EN;
+output reg [9:0] URN10B;
+
+wire lfsr_fb;
+reg [16:1] lfsr;
+reg [9:0] lfsr_10b;
+integer i;
+
+always @ (posedge CLK or negedge NRST) begin
+	if (!NRST) begin
+		URN10B <= 0;
+	end else begin
+		URN10B <= EN? lfsr_10b: 0;
+	end
+end
+
+always @* begin
+    lfsr_10b = lfsr[10:1];
+end
+
+// create feedback polynomials
+assign lfsr_fb = lfsr[16] ^~ lfsr[15] ^~ lfsr[13] ^~ lfsr[4];
+
+always @(posedge CLK or negedge NRST) begin
+	if(!NRST)
+		lfsr <= 1;
+	else if (EN) begin
+		lfsr <= {lfsr[15:1], lfsr_fb};
+	end else begin
+		lfsr <= 1;
+	end
+end
+
+endmodule
+
 // -------------------------------------------------------
 // Module Name: SYSPSYNCRST
 // Function: system phase synchronization rst signal generator
@@ -180,28 +232,36 @@ assign sum3_temp = sum2 + IN_X4[4*`WF-1-:`WF];
 assign sum3 = sum3_temp[`WF-1:0];
 assign ca3 = sum3_temp[`WF];
 
+reg [`WF-1:0] sum0_init, sum1_init, sum2_init, sum3_init;
+
+always @* begin
+	sum0_init = 0;
+	sum1_init = sum0_init + IN_X4[2*`WF-1-:`WF];
+	sum2_init = sum1_init + IN_X4[3*`WF-1-:`WF];
+	sum3_init = sum2_init + IN_X4[4*`WF-1-:`WF];
+end
+
 always @ (posedge CLK or negedge NRST) begin
-	if (!NRST) sum3_reg <= 0;
+	if (!NRST) sum3_reg <= sum3_init;
 	else if (EN) begin 
 		if (!sync_nrst) sum3_reg <= 0;
 		else sum3_reg <= sum3;
 	end
 end
 
-// // test
 // real r_phe_x4_0, r_phe_x4_1, r_phe_x4_2, r_phe_x4_3;
 // real r_out_x4_0, r_out_x4_1, r_out_x4_2, r_out_x4_3;
 
 // always @* begin
-// 	r_phe_x4_0 = PHE_X4[1*`WF-1-:`WF] * (2.0**-`WF);
-// 	r_phe_x4_1 = PHE_X4[2*`WF-1-:`WF] * (2.0**-`WF);
-// 	r_phe_x4_2 = PHE_X4[3*`WF-1-:`WF] * (2.0**-`WF);
-// 	r_phe_x4_3 = PHE_X4[4*`WF-1-:`WF] * (2.0**-`WF);
+	// r_phe_x4_0 = PHE_X4[1*`WF-1-:`WF] * (2.0**-`WF);
+	// r_phe_x4_1 = PHE_X4[2*`WF-1-:`WF] * (2.0**-`WF);
+	// r_phe_x4_2 = PHE_X4[3*`WF-1-:`WF] * (2.0**-`WF);
+	// r_phe_x4_3 = PHE_X4[4*`WF-1-:`WF] * (2.0**-`WF);
 
-// 	r_out_x4_0 = OUT_X4[0];
-// 	r_out_x4_1 = OUT_X4[1];
-// 	r_out_x4_2 = OUT_X4[2];
-// 	r_out_x4_3 = OUT_X4[3];
+	// r_out_x4_0 = OUT_X4[0];
+	// r_out_x4_1 = OUT_X4[1];
+	// r_out_x4_2 = OUT_X4[2];
+	// r_out_x4_3 = OUT_X4[3];
 // end
 
 endmodule
@@ -254,6 +314,7 @@ reg [`WI+`WF-1:0] module_threshold;
 reg [`WI+`WF-1:0] nco_phase;
 reg [`WI+`WF-1:0] nco_phase_init [3:0];
 reg [`WI+`WF-1:0] nco_phase_d1;
+reg nco_phase_c; // sub-integer mode
 
 // calculate oversampling rate fmod/fpll_aux
 always @* begin
@@ -266,18 +327,15 @@ always @* begin
 	nco_phase = nco_phase_d1 + fcw_os_aux_residual_x4;
 	if (nco_phase >= module_threshold) begin
 		nco_phase = nco_phase - module_threshold;
+		nco_phase_c = ~|nco_phase;
 	end else begin
 		nco_phase = nco_phase;
+		nco_phase_c = 0;
 	end
 
     // nco initial phase calc
     // clk0
     nco_phase_init[0] = 0;
-	if (nco_phase_init[0] >= module_threshold) begin
-		nco_phase_init[0] = nco_phase_init[0] - module_threshold;
-	end else begin
-		nco_phase_init[0] = nco_phase_init[0];
-	end
     // clk1
     nco_phase_init[1] = nco_phase_init[0] + fcw_os_aux_residual;
 	if (nco_phase_init[1] >= module_threshold) begin
@@ -306,11 +364,24 @@ end
 wire sync_nrst;
 assign sync_nrst = NCO_SYNC_NRST_EN? SYNC_NRST: 1;
 
+reg [5:0] NRST_dly; // delay 1~6
+reg [5:0] sync_nrst_dly;
+
 always @(posedge CLK or negedge NRST) begin
 	if (!NRST) begin
-		nco_phase_d1 <= nco_phase_init[k];
+		NRST_dly <= 0;
+		sync_nrst_dly <= 6'h3f;
 	end else begin
-		if (!sync_nrst) nco_phase_d1 <= nco_phase_init[k];
+		NRST_dly <= {NRST_dly[4:0], NRST};
+		sync_nrst_dly <= {sync_nrst_dly[4:0], sync_nrst};
+	end
+end
+
+always @(posedge CLK or negedge NRST_dly[5]) begin
+	if (!NRST_dly[5]) begin
+		nco_phase_d1 <= nco_phase_init[k];
+	end else if (EN) begin
+		if (!sync_nrst_dly[5]) nco_phase_d1 <= nco_phase_init[k];
 		else nco_phase_d1 <= nco_phase;
 	end
 end
@@ -320,10 +391,10 @@ reg [`WF_PHASE-1:0] dphase_m;
 
 // real phase_ana_norm, phase_ana_norm_0, phase_ana_norm_1, phase_ana_norm_2, phase_ana_norm_3;
 
-// assign phase_ana_norm_0 = simpleFOD2_TB.phase_ana_norm_bus[0];
-// assign phase_ana_norm_1 = simpleFOD2_TB.phase_ana_norm_bus[1];
-// assign phase_ana_norm_2 = simpleFOD2_TB.phase_ana_norm_bus[2];
-// assign phase_ana_norm_3 = simpleFOD2_TB.phase_ana_norm_bus[3];
+// assign phase_ana_norm_0 = FOD_2lane_TB.phase_ana_norm_bus[0];
+// assign phase_ana_norm_1 = FOD_2lane_TB.phase_ana_norm_bus[1];
+// assign phase_ana_norm_2 = FOD_2lane_TB.phase_ana_norm_bus[2];
+// assign phase_ana_norm_3 = FOD_2lane_TB.phase_ana_norm_bus[3];
 
 // always @* begin
 // 	if (k==0) phase_ana_norm = phase_ana_norm_0;
@@ -334,8 +405,10 @@ reg [`WF_PHASE-1:0] dphase_m;
 
 // always @(posedge CLK or negedge NRST) begin
 // 	if (!NRST) dphase_m <= 0;
-// 	else begin
+// 	else if (EN) begin
 // 		dphase_m <= $rtoi(phase_ana_norm * (2**`WF_PHASE));
+// 	end else begin
+// 		dphase_m <= 0;
 // 	end
 // end
 
@@ -355,8 +428,10 @@ reg [`WF_PHASE-1:0] dphase_m;
 always @(posedge CLK or negedge NRST) begin
 	if (!NRST) begin
 		dphase_m <= 0;
-	end else begin
+	end else if (EN) begin
 		dphase_m <= PHE_MEASURE << (`WF_PHASE-`MP_SEG_BIN);
+	end else begin
+		dphase_m <= 0;
 	end
 end
 
@@ -386,10 +461,10 @@ assign PHE_NORM = diff_phase[`WF_PHASE-`WF-1]? (diff_phase[`WF_PHASE-1:`WF_PHASE
 // real r_dphase_c, r_diff_phase, r_nco_phase;
 
 // always @* begin
-// 	r_dphase_c = $unsigned(dphase_c) * (2.0**-`WF_PHASE) * 360 + 180;
-// 	r_dphase_c = (r_dphase_c/360 - $floor(r_dphase_c/360))*360;
-// 	r_diff_phase = $signed(diff_phase) * (2.0**-`WF_PHASE);
-// 	r_nco_phase = $unsigned(nco_phase_s) * (2.0**-`WF_PHASE);
+	// r_dphase_c = $unsigned(dphase_c) * (2.0**-`WF_PHASE) * 360 + 180;
+	// r_dphase_c = (r_dphase_c/360 - $floor(r_dphase_c/360))*360;
+	// r_diff_phase = $signed(diff_phase) * (2.0**-`WF_PHASE);
+	// r_nco_phase = $unsigned(nco_phase_s) * (2.0**-`WF_PHASE);
 // end
 
 endmodule
@@ -420,7 +495,7 @@ input FREQ_C_MODE; // 0:linear mode; 1: 1step mode
 input [4:0] FREQ_C_KS; // step shift 0 ~ 15
 input [9:0] PHASE_CTRL; // manual phase adjustment
 input [`WF_PHASE-1:0] dphase_c;
-output [`WI+`WF-1:0] FREQ_C;
+output reg [`WI+`WF-1:0] FREQ_C;
 
 reg [1:0] freq_c_state; // 0: initial; 1: operate; 2,3: idle;
 reg [`WI+`WF-1:0] freq_c_cnt_th, freq_c_cnt;
@@ -431,7 +506,9 @@ reg [`WF_PHASE-1:0] phase_manual;
 reg [`WF_PHASE-1:0] dphase_c_man;
 reg [`WF_PHASE-1:0] dphase_c_man_abs;
 
-assign FREQ_C = freq_c;
+always @* begin
+	FREQ_C = freq_c;
+end
 
 always @ (posedge CLK or negedge NRST) begin
 	if (!NRST) begin
@@ -746,7 +823,8 @@ PCALI_FREQDOWN,
 PCALI_KS,
 // output
 PHE_NORM_X4,
-FREQ_C_X4
+FREQ_C_X4,
+DPH_C_CUT
 );
 
 // delay information
@@ -770,34 +848,7 @@ input NCO_SYNC_NRST_EN;
 
 output [4*`WF-1:0] PHE_NORM_X4; // 0<=x<1
 output [4*(`WI+`WF)-1:0] FREQ_C_X4;
-
-// down scale phase cali freq
-reg [7:0] p_fdn_win_th;
-reg [7:0] p_fdn_win_cnt;
-reg p_fdn_win;
-
-always @ (posedge CLK or negedge NRST) begin
-	if (!NRST) begin
-		p_fdn_win_th <= 128;
-	end else begin
-		p_fdn_win_th <= 1 << PCALI_FREQDOWN;
-	end
-end
-// if pcali_freqdown == 0, p_fdn_win will always set to 1
-always @ (posedge CLK or negedge NRST) begin
-	if (!NRST) begin
-		p_fdn_win_cnt <= 0;
-		p_fdn_win <= 0;
-	end else begin
-		if (p_fdn_win_cnt < p_fdn_win_th - 1) begin
-			p_fdn_win_cnt <= p_fdn_win_cnt + 1;
-			p_fdn_win <= 0;
-		end else begin
-			p_fdn_win_cnt <= p_fdn_win_cnt + 1 - p_fdn_win_th;
-			p_fdn_win <= 1;
-		end
-	end
-end
+output [9:0] DPH_C_CUT;
 
 reg [`WF_PHASE-1:0] dphase_c;
 wire [4*`WF_PHASE-1:0] dphase_c_step_x4; // dphase for offset calibration
@@ -812,15 +863,19 @@ always @(posedge CLK or negedge NRST) begin
 	end else if (EN) begin 
 		// dphase_c has a pattern with 1200ns period, maybe lead to a spur, but that can be suppressed with a digital random dither
 		dphase_c <= dphase_c_step + dphase_c;
+	end else begin
+		dphase_c <= 0;
 	end
 end
 
+assign DPH_C_CUT = dphase_c[`WF_PHASE-1:`WF_PHASE-10];
+
 // PHE_MEASURE -> PHE_NORM: 1p
 // calc phe in each clk domain (clk0~3)
-PHEGEN_NCO #(0) U2_CLK0_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[1*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[1*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[1*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
-PHEGEN_NCO #(1) U2_CLK1_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[2*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[2*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[2*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
-PHEGEN_NCO #(2) U2_CLK2_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[3*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[3*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[3*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
-PHEGEN_NCO #(3) U2_CLK3_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[4*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[4*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[4*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
+PHEGEN_NCO #(0) U2_CLK0_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN|FREQ_C_EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[1*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[1*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[1*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
+PHEGEN_NCO #(1) U2_CLK1_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN|FREQ_C_EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[2*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[2*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[2*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
+PHEGEN_NCO #(2) U2_CLK2_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN|FREQ_C_EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[3*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[3*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[3*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
+PHEGEN_NCO #(3) U2_CLK3_PHEGEN_NCO ( .NRST(NRST), .CLK(CLK), .EN(EN|FREQ_C_EN), .FCW_FOD(FCW_FOD), .FCW_PLL_MAIN_S(FCW_PLL_MAIN_S), .FCW_PLL_AUX_S(FCW_PLL_AUX_S), .PHE_MEASURE(PHE_MEASURE_X4[4*`MP_SEG_BIN-1-:`MP_SEG_BIN]), .PCALI_KS(PCALI_KS), .dphase_c(dphase_c), .dphase_c_step(dphase_c_step_x4[4*`WF_PHASE-1-:`WF_PHASE]), .PHE_NORM(PHE_NORM_X4[4*`WF-1-:`WF]), .SYNC_NRST(SYNC_NRST), .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN) );
 
 // calc fcw cali in each clk domain (clk0~3)
 FREQCGEN #(0) U2_CLK0_FREQCGEN ( .NRST(NRST), .CLK(CLK), .FREQ_C_EN(FREQ_C_EN), .FREQ_C_MODE(FREQ_C_MODE), .FREQ_C_KS(FREQ_C_KS), .PHASE_CTRL(PHASE_CTRL), .dphase_c(dphase_c), .FREQ_C(FREQ_C_X4[1*(`WI+`WF)-1-:(`WI+`WF)]) );
@@ -857,8 +912,11 @@ KD,
 KDTCB_INIT,
 KDTCC_INIT,
 KDTCD_INIT,
+SECSEL_TEST,
+REGSEL_TEST,
 // output
 DTCDCW_X4,
+LUT_INT
 );
 
 // delay information
@@ -885,6 +943,10 @@ input [9:0] KDTCD_INIT;
 
 output reg [4*10-1:0] DTCDCW_X4;
 
+input [1:0] SECSEL_TEST; // 0 -- kdtcB/ 2 -- kdtcC/ 3 -- kdtcD
+input [2:0] REGSEL_TEST; // reg0~7
+output reg [10:0] LUT_INT;
+
 // internal signals
 // split DTC delay range into 4 segments
 reg [10+`WF:0] LUTB [7:0];
@@ -906,8 +968,10 @@ assign kdtcB_cali_x4m[3] = LUTB[phe_msb_x4m[3]]; assign kdtcC_cali_x4m[3] = LUTC
 always @ (posedge CLK or negedge NRST) begin
 	if (!NRST) begin
 		DTCDCW_X4 <= 0;
+	end else if (DTC_EN) begin
+		DTCDCW_X4 <= {dtc_temp_x4m[3], dtc_temp_x4m[2], dtc_temp_x4m[1], dtc_temp_x4m[0]};
 	end else begin
-		DTCDCW_X4 <= DTC_EN? {dtc_temp_x4m[3], dtc_temp_x4m[2], dtc_temp_x4m[1], dtc_temp_x4m[0]}: 0;
+		DTCDCW_X4 <= 0;
 	end
 end
 
@@ -958,16 +1022,27 @@ end
 
 // DFF ofst cali
 wire [10+`WF:0] lms_errD_ext_reg;
+wire [10+`WF:0] LUTD_init, LUTD_init_x2;
+reg [10+`WF:0] LUTD_update;
 
+assign LUTD_init = KDTCD_INIT<<`WF;
 assign lms_errD_ext_reg = lms_errD_ext_x4m_reg[0] + lms_errD_ext_x4m_reg[1] + lms_errD_ext_x4m_reg[2] + lms_errD_ext_x4m_reg[3];
+
+always @* begin
+	LUTD_update = LUTD[1] + lms_errD_ext_reg;
+	if (LUTD_update[10+`WF]) LUTD_update = 0; // LUTD_update < 0
+	else if (LUTD_update > LUTD_init_x2) LUTD_update = LUTD_init_x2; // LUTD_update > 2*init
+	else LUTD_update = LUTD_update;
+end
+
 always @ (posedge CLK or negedge NRST) begin
 	if (!NRST) begin
 		// LUT initial
 		for (i = 1; i >= 0; i = i-1) begin
-			LUTD[i] <= KDTCD_INIT<<`WF;		
+			LUTD[i] <= LUTD_init;		
 		end
 	end else if (OFSTC_EN) begin
-		LUTD[1] <= LUTD[1] + lms_errD_ext_reg;
+		LUTD[1] <= LUTD_update;
 	end
 end
 
@@ -979,20 +1054,39 @@ DTCLMSGEN U2_CLK1_DTCLMSGEN ( .CLK(CLK), .NRST(NRST), .GAC_EN(GAC_EN), .OFSTC_EN
 DTCLMSGEN U2_CLK2_DTCLMSGEN ( .CLK(CLK), .NRST(NRST), .GAC_EN(GAC_EN), .OFSTC_EN(OFSTC_EN), .RT_EN(RT_EN), .DSM_PHE(DSM_PHE_X4[3*`WF-1-:`WF]), .PHE_NORM(PHE_NORM_X4[3*`WF-1-:`WF]), .PSEG(PSEG), .CALIORDER(CALIORDER), .KB(KB), .KC(KC), .KD(KD), .kdtcB_cali(kdtcB_cali_x4m[2]), .kdtcC_cali(kdtcC_cali_x4m[2]), .kdtcD_cali(kdtcD_cali_x4m[2]), .phe_msb(phe_msb_x4m[2]), .phe_lsb(phe_lsb_x4m[2]), .phe_quant(phe_quant_x4m[2]), .lms_errB_ext_reg(lms_errB_ext_x4m_reg[2]), .lms_errC_ext_reg(lms_errC_ext_x4m_reg[2]), .lms_errD_ext_reg(lms_errD_ext_x4m_reg[2]), .phem_sync_reg(phem_sync_x4m_reg[2]), .phem_sync_reg_d2(phem_sync_x4m_reg_d2[2]), .dtc_temp(dtc_temp_x4m[2]) );
 DTCLMSGEN U2_CLK3_DTCLMSGEN ( .CLK(CLK), .NRST(NRST), .GAC_EN(GAC_EN), .OFSTC_EN(OFSTC_EN), .RT_EN(RT_EN), .DSM_PHE(DSM_PHE_X4[4*`WF-1-:`WF]), .PHE_NORM(PHE_NORM_X4[4*`WF-1-:`WF]), .PSEG(PSEG), .CALIORDER(CALIORDER), .KB(KB), .KC(KC), .KD(KD), .kdtcB_cali(kdtcB_cali_x4m[3]), .kdtcC_cali(kdtcC_cali_x4m[3]), .kdtcD_cali(kdtcD_cali_x4m[3]), .phe_msb(phe_msb_x4m[3]), .phe_lsb(phe_lsb_x4m[3]), .phe_quant(phe_quant_x4m[3]), .lms_errB_ext_reg(lms_errB_ext_x4m_reg[3]), .lms_errC_ext_reg(lms_errC_ext_x4m_reg[3]), .lms_errD_ext_reg(lms_errD_ext_x4m_reg[3]), .phem_sync_reg(phem_sync_x4m_reg[3]), .phem_sync_reg_d2(phem_sync_x4m_reg_d2[3]), .dtc_temp(dtc_temp_x4m[3]) );
 
+reg [10+`WF:0] lut_test;
+
+// kdtc test output signal
+always @* begin
+	case (SECSEL_TEST)
+		2'b00: lut_test = LUTB[REGSEL_TEST]; // kdtcB
+		2'b01: lut_test = LUTC[REGSEL_TEST]; // kdtcC
+		default: lut_test = LUTD[REGSEL_TEST]; //kdtcD
+	endcase
+end
+
+always @ (posedge CLK or negedge NRST) begin
+	if (!NRST) begin
+		LUT_INT <= 0;
+	end else begin
+		LUT_INT <= lut_test[10+`WF:`WF];
+	end
+end
+
 // // test
 // real lutb0, lutb1, lutb2, lutb3, lutc0, lutc1, lutc2, lutc3, lutd0, lutd1;
 
 // always @* begin
-// 	lutb0 = $signed(LUTB[0]) * (2.0**(-`WF));
-// 	lutb1 = $signed(LUTB[1]) * (2.0**(-`WF));
-// 	lutb2 = $signed(LUTB[2]) * (2.0**(-`WF));
-// 	lutb3 = $signed(LUTB[3]) * (2.0**(-`WF));
-// 	lutc0 = $signed(LUTC[0]) * (2.0**(-`WF));
-// 	lutc1 = $signed(LUTC[1]) * (2.0**(-`WF));
-// 	lutc2 = $signed(LUTC[2]) * (2.0**(-`WF));
-// 	lutc3 = $signed(LUTC[3]) * (2.0**(-`WF));
-// 	lutd0 = $signed(LUTD[0]) * (2.0**(-`WF));
-// 	lutd1 = $signed(LUTD[1]) * (2.0**(-`WF));
+	// lutb0 = $signed(LUTB[0]) * (2.0**(-`WF));
+	// lutb1 = $signed(LUTB[1]) * (2.0**(-`WF));
+	// lutb2 = $signed(LUTB[2]) * (2.0**(-`WF));
+	// lutb3 = $signed(LUTB[3]) * (2.0**(-`WF));
+	// lutc0 = $signed(LUTC[0]) * (2.0**(-`WF));
+	// lutc1 = $signed(LUTC[1]) * (2.0**(-`WF));
+	// lutc2 = $signed(LUTC[2]) * (2.0**(-`WF));
+	// lutc3 = $signed(LUTC[3]) * (2.0**(-`WF));
+	// lutd0 = $signed(LUTD[0]) * (2.0**(-`WF));
+	// lutd1 = $signed(LUTD[1]) * (2.0**(-`WF));
 // end
 
 endmodule
@@ -1022,6 +1116,7 @@ FREQ_C_KS,
 PHASE_CTRL,
 PCALI_FREQDOWN,
 PCALI_KS, // 0~16
+DTC_EN,
 RT_EN,
 DTCCALI_EN,
 OFSTCALI_EN,
@@ -1033,10 +1128,16 @@ KD, // -16 ~
 KDTCB_INIT,
 KDTCC_INIT,
 KDTCD_INIT,
+FCW_DN_EN,
+FCW_DN_WEIGHT,
 // output
 MMD_DCW_X4,
 RT_DCW_X4,
-DTC_DCW_X4
+DTC_DCW_X4,
+DPH_C_CUT,
+SECSEL_TEST,
+REGSEL_TEST,
+LUT_INT
 );
 // delay information
 // DSM output -> DCW delay 1 cycle
@@ -1058,6 +1159,7 @@ input [2:0] PCALI_FREQDOWN;
 input [4:0] PCALI_KS; // 0~16
 
 // INL cali
+input DTC_EN;
 input RT_EN;
 input DTCCALI_EN;
 input OFSTCALI_EN;
@@ -1069,6 +1171,8 @@ input [4:0] KD; // -16 ~
 input [9:0] KDTCB_INIT;
 input [9:0] KDTCC_INIT;
 input [9:0] KDTCD_INIT;
+input FCW_DN_EN;
+input [1:0] FCW_DN_WEIGHT; // dither weight, shift right, maximum set to 2(rand 0~256), greater than 2 will lead to gain cali error
 
 // phase sync
 input SYS_REF;
@@ -1079,9 +1183,16 @@ input NCO_SYNC_NRST_EN;
 // freq hop
 input FREQ_HOP;
 
-output reg [4*6-1:0] MMD_DCW_X4; // MMD div range 4~63
+output reg [4*7-1:0] MMD_DCW_X4; // MMD div range 4~127
 output reg [3:0] RT_DCW_X4; // 0: posedge retimer; 1: negedge retimer(delay for 0.5 FPLL8G cycle)
 output [4*10-1:0] DTC_DCW_X4;
+
+// to spi
+output [9:0] DPH_C_CUT;
+
+input [1:0] SECSEL_TEST; // 0 -- kdtcB/ 2 -- kdtcC/ 3 -- kdtcD
+input [2:0] REGSEL_TEST; // reg0~7
+output [10:0] LUT_INT;
 
 
 // code begin
@@ -1116,11 +1227,30 @@ always @ (posedge CLK or negedge NRST) begin
 	end
 end
 
+wire [9:0] urn10b;
+reg [`WI+`WF-1:0] fcw_dither, fcw_dither_d1, phase_dither;
+
+always @ (posedge CLK or negedge NRST) begin
+	if (!NRST) begin
+		fcw_dither <= 0;
+		fcw_dither_d1 <= 0;
+		phase_dither <= 0;
+	end else if (FCW_DN_EN) begin
+		fcw_dither <= urn10b>>FCW_DN_WEIGHT;
+		fcw_dither_d1 <= fcw_dither;
+		phase_dither <= fcw_dither - fcw_dither_d1;
+	end else begin
+		phase_dither <= 0;
+	end
+end
+
+FCW_LFSR10_RST1 U1_FOD_CTRL_FCW_DITHER ( .CLK(CLK), .NRST(NRST), .EN(FCW_DN_EN), .URN10B(urn10b) );
+
 // FOD phase adjust according PCALI 
-assign {FCW_FOD_I_X4[1*`WI-1-:`WI], FCW_FOD_F_X4[1*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[1*(`WI+`WF)-1-:(`WI+`WF)]; // clk0
-assign {FCW_FOD_I_X4[2*`WI-1-:`WI], FCW_FOD_F_X4[2*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[2*(`WI+`WF)-1-:(`WI+`WF)]; // clk1
-assign {FCW_FOD_I_X4[3*`WI-1-:`WI], FCW_FOD_F_X4[3*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[3*(`WI+`WF)-1-:(`WI+`WF)]; // clk2
-assign {FCW_FOD_I_X4[4*`WI-1-:`WI], FCW_FOD_F_X4[4*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[4*(`WI+`WF)-1-:(`WI+`WF)]; // clk3
+assign {FCW_FOD_I_X4[1*`WI-1-:`WI], FCW_FOD_F_X4[1*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[1*(`WI+`WF)-1-:(`WI+`WF)] + phase_dither; // clk0
+assign {FCW_FOD_I_X4[2*`WI-1-:`WI], FCW_FOD_F_X4[2*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[2*(`WI+`WF)-1-:(`WI+`WF)] + phase_dither; // clk1
+assign {FCW_FOD_I_X4[3*`WI-1-:`WI], FCW_FOD_F_X4[3*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[3*(`WI+`WF)-1-:(`WI+`WF)] + phase_dither; // clk2
+assign {FCW_FOD_I_X4[4*`WI-1-:`WI], FCW_FOD_F_X4[4*`WF-1-:`WF]} = FCW_FOD_hop + FREQ_C_X4[4*(`WI+`WF)-1-:(`WI+`WF)] + phase_dither; // clk3
 
 // 0.5 quantization
 reg [3:0] phe_quant_x4;
@@ -1138,25 +1268,25 @@ end
 // DSM_CAR 	-> MMD_DCW_X4: 3p
 // DSM_PHE	-> RT_DCW_X4: 3p
 // 			-> DTC_DCW_X4: 3p
-reg [4*6-1:0] mmd_dcw_x4_d1, mmd_dcw_x4_d2;
+reg [4*7-1:0] mmd_dcw_x4_d1, mmd_dcw_x4_d2;
 reg [3:0] rt_dcw_x4_d1, rt_dcw_x4_d2;
 always @ (posedge CLK or negedge NRST) begin
 	
 	if (!NRST) begin
-		mmd_dcw_x4_d1 <= {4{6'd4}};
-		mmd_dcw_x4_d2 <= {4{6'd4}};
-		MMD_DCW_X4 <= {4{6'd4}};
+		mmd_dcw_x4_d1 <= {4{7'd4}};
+		mmd_dcw_x4_d2 <= {4{7'd4}};
+		MMD_DCW_X4 <= {4{7'd4}};
 
 		rt_dcw_x4_d1 <= 0;
 		rt_dcw_x4_d2 <= 0;
 		RT_DCW_X4 <= 0;
 	end else begin
-		mmd_dcw_x4_d1[1*6-1-:6] <= FCW_FOD_I_X4[1*`WI-1-:`WI] + DSM_CAR_X4[0];
-		mmd_dcw_x4_d1[2*6-1-:6] <= FCW_FOD_I_X4[2*`WI-1-:`WI] + DSM_CAR_X4[1];
-		mmd_dcw_x4_d1[3*6-1-:6] <= FCW_FOD_I_X4[3*`WI-1-:`WI] + DSM_CAR_X4[2];
-		mmd_dcw_x4_d1[4*6-1-:6] <= FCW_FOD_I_X4[4*`WI-1-:`WI] + DSM_CAR_X4[3];
+		mmd_dcw_x4_d1[1*7-1-:7] <= FCW_FOD_I_X4[1*`WI-1-:`WI] + DSM_CAR_X4[0];
+		mmd_dcw_x4_d1[2*7-1-:7] <= FCW_FOD_I_X4[2*`WI-1-:`WI] + DSM_CAR_X4[1];
+		mmd_dcw_x4_d1[3*7-1-:7] <= FCW_FOD_I_X4[3*`WI-1-:`WI] + DSM_CAR_X4[2];
+		mmd_dcw_x4_d1[4*7-1-:7] <= FCW_FOD_I_X4[4*`WI-1-:`WI] + DSM_CAR_X4[3];
 		mmd_dcw_x4_d2 <= mmd_dcw_x4_d1;
-		MMD_DCW_X4 <= mmd_dcw_x4_d2;
+		MMD_DCW_X4 <= mmd_dcw_x4_d1;
 
 		rt_dcw_x4_d1 <= phe_quant_x4;
 		rt_dcw_x4_d2 <= rt_dcw_x4_d1;
@@ -1186,14 +1316,15 @@ CALI_PHASESYNC U1_FOD_CTRL_CALI_PHASESYNC (
 .PHE_NORM_X4(PHE_NORM_X4),
 .FREQ_C_X4(FREQ_C_X4),
 .NCO_SYNC_NRST_EN(NCO_SYNC_NRST_EN),
-.SYNC_NRST(SYNC_NRST)
+.SYNC_NRST(SYNC_NRST),
+.DPH_C_CUT(DPH_C_CUT)
 );
 
 // DSM_PHE -> DTC_DCW: 3p
 CALI_DTCINL U1_FOD_CTRL_CALI_DTCINL (
 .NRST(NRST),
 .CLK(CLK),
-.DTC_EN(1'b1),
+.DTC_EN(DTC_EN),
 .GAC_EN(DTCCALI_EN),
 .OFSTC_EN(OFSTCALI_EN),
 .RT_EN(RT_EN),
@@ -1207,9 +1338,11 @@ CALI_DTCINL U1_FOD_CTRL_CALI_DTCINL (
 .KDTCB_INIT(KDTCB_INIT),
 .KDTCC_INIT(KDTCC_INIT),
 .KDTCD_INIT(KDTCD_INIT),
-.DTCDCW_X4(DTC_DCW_X4)
+.SECSEL_TEST(SECSEL_TEST),
+.REGSEL_TEST(REGSEL_TEST),
+.DTCDCW_X4(DTC_DCW_X4),
+.LUT_INT(LUT_INT)
 );
-
 
 // // test
 // real fcw_real;

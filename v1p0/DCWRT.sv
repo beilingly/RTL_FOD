@@ -219,7 +219,7 @@ end
 // a delay is insert to sampled phe to make sure DIG_CLK can sample the phe in last period correctly
 reg [`MP_SEG_BIN-1:0] phe_dly;
 always @* begin
-    phe_dly <= #(10e-15) phe;
+    phe_dly <= #(20e-12) phe;
 end
 
 always @ (posedge DIG_CLK[1]) phe0 <= phe_dly;

@@ -32,7 +32,8 @@ KC,
 KD,
 KDTCB_INIT,
 KDTCC_INIT,
-KDTCD_INIT,
+KDTCD_INIT0,
+KDTCD_INIT1,
 FCW_DN_EN,
 FCW_DN_WEIGHT,
 SYS_EN,
@@ -60,7 +61,8 @@ output [4:0] KC;
 output [4:0] KD;
 output [9:0] KDTCB_INIT;
 output [9:0] KDTCC_INIT;
-output [9:0] KDTCD_INIT;
+output [9:0] KDTCD_INIT0;
+output [9:0] KDTCD_INIT1;
 output FCW_DN_EN;
 output [1:0] FCW_DN_WEIGHT;
 output SYS_EN;
@@ -75,7 +77,7 @@ real rfcw;
 
 initial begin
     NARST = 0;
-    rfcw = 4+0.25;
+    rfcw = 8+0.26;
     FCW_FOD = rfcw * (2**`WF);
     #1e-9;
     NARST = 1;
@@ -102,7 +104,8 @@ reg [4:0] KC; // -16 ~ 15
 reg [4:0] KD; // -16 ~
 reg [9:0] KDTCB_INIT;
 reg [9:0] KDTCC_INIT;
-reg [9:0] KDTCD_INIT;
+reg [9:0] KDTCD_INIT0;
+reg [9:0] KDTCD_INIT1;
 reg FCW_DN_EN;
 reg [1:0] FCW_DN_WEIGHT;
 
@@ -124,19 +127,22 @@ initial begin
 
 	CALIORDER = 2'b11;
 
-	KB = -5'd0;
+	KB = 5'd0;
 	KC = -5'd3;
-	KD = -5'd5;
+	KD = -5'd3;
 
-	KDTCB_INIT = 10'd390 * 0.9;
-	KDTCC_INIT = 10'd195;
-	KDTCD_INIT = 10'd0;
+	KDTCB_INIT = 1.0/12e9/2/60e-15 * 1;
+	// KDTCB_INIT = 390;
+	// KDTCC_INIT = 10'd195;
+	KDTCC_INIT = 1.0/12e9/2/60e-15 * 0.5;
+	KDTCD_INIT0 = 10'd100;
+	KDTCD_INIT1 = 10'd100;
 
-	FCW_DN_EN = 1;
+	FCW_DN_EN = 0;
 	DTCCALI_EN = 0;
 	OFSTCALI_EN = 0;
 	#20e-6;
-	DTCCALI_EN = 1;
+	DTCCALI_EN = 0;
 	OFSTCALI_EN = 0;
 end
 
