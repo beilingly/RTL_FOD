@@ -3,8 +3,6 @@
 `define WI 6
 `define WF 16
 `define WF_PHASE 24
-`define MP_SEG_BIN 3
-`define MP_SEG 2**`MP_SEG_BIN
 
 // -------------------------------------------------------
 // Module Name: simpleFOD2_TB
@@ -15,22 +13,17 @@
 module simpleFOD2_TB;
 parameter real fin = 250e6;
 parameter real fcw_pll_main = 32;
-parameter real fcw_pll_aux = 4;
+parameter real fcw_pll_aux = 16;
 
 reg NARST;
 reg REF250M;
 reg FPLL8G;
-reg [`MP_SEG-1:0] FMP;
-reg [`MP_SEG-1:0] FMP_RND;
 wire FDIV;
 wire FDIVRT;
-wire FDTC;
-wire [4*6-1:0] MMD_DCW_X4;
-wire [3:0] RT_DCW_X4; // select whether use pos or neg as retimer clock 
-wire [4*10-1:0] DTC_DCW_X4;
-wire [6-1:0] MMD_DCW;
-wire  RT_DCW; // select whether use pos or neg as retimer clock 
-wire [10-1:0] DTC_DCW;
+wire FDTC, FDTC_SYNC;
+wire [5:0] MMD_DCW;
+wire RT_DCW; // select whether use pos or neg as retimer clock 
+wire [9:0] DTC_DCW;
 
 // REF 250M
 initial begin
@@ -60,17 +53,13 @@ initial begin
     end
 end
 
-// auxiliary PLL outputs 4G clock in 8 interleave phases
-wire AUXPLL_PD;
-wire [6:0] DCTRL_F;
+// pll8g div2
+reg FAUX4G;
 
-// AUXPLL U0_AUXPLL ( .fin(fin), .fcw_pll_aux(fcw_pll_aux), .FMP(FMP) );
-// DLL_PN U0_DLL ( .DCTRL_C(6'd32), .DCTRL_F(DCTRL_F), .MPH(FMP) );
-MPDIV8 U0_MPDIV8 ( .NARST(NARST), .CLK(FPLL8G), .FMP(FMP), .FMP_RND(FMP_RND) );
-
-// // aux pll phase detect
-// auxpll_pd U0_auxpll_pd ( .REF250M(REF250M), .CK4G(FMP[0]), .PD(AUXPLL_PD) );
-// TP2DLFIIRX2 U0_TP2DLFIIRX2 ( .NRST(NARST), .CKVD(REF250M), .PDE(AUXPLL_PD), .DLFEN(1'b1), .KPS(-6'sd2), .KIS(-6'sd10), .KIIR1S(-6'sd2), .KIIR2S(-6'sd2), .IIR1EN(1'b0), .IIR2EN(1'b0), .DSM1STEN(1'b1), .DCTRL(DCTRL_F) );
+initial FAUX4G = 0;
+always @ (posedge FPLL8G) begin
+	FAUX4G <= #(10e-12) ~FAUX4G;
+end
 
 // FOD analog module
 mmd_5stage U0_mmd_5stage ( .CKV (FPLL8G), .DIVNUM (MMD_DCW), .CKVD (FDIV) );
@@ -80,51 +69,40 @@ retimer_pos_neg U0_retimer_pos_neg ( .D (FDIV), .CK (FPLL8G), .POLARITY (RT_DCW)
 // assign dtc_dcw = U0_FOD_CTRL.U1_FOD_CTRL_CALI_DTCINL.dtc_dcw_reg3;
 
 dtc U0_dtc ( .CKIN (FDIVRT), .CKOUT (FDTC), .DCW (DTC_DCW) );
-
-// 500M interleaved clks
-wire [3:0] DIG_CLK;
-MPDIV4 U0_MPDIV4 ( .NARST(NARST), .CLK(FDTC), .FMP(DIG_CLK) );
-// dig-ana interface
-
+DCDL U0_DCDL ( .CKIN(FDTC), .CKOUT(FDTC_SYNC), .DCW(U0_FOD_CTRL.U1_FOD_CTRL_CALI_PHASESYNC.phase_c) );
 
 // Phase Detect Samplers Array
-// reg [`MP_SEG-1:0] PSAMP;
-reg [4*`MP_SEG_BIN-1:0] PHE_X4;
-// wire FDTCRND;
+reg PHE;
+wire FDTCRND;
 // reg [3:0] PHE;
 
-// // dtcrand U0_dtcrand ( .CKIN(FDTC), .CKOUT(FDTCRND) );
-// always @ (posedge FDTC) begin // freq 2G
-//     PSAMP <= FMP_RND;
-// end
-
-// sample FMD_RND with time-interleaved clk(500M)
-reg [`MP_SEG-1:0] psamp;
-
-always @ (posedge FDTC) begin // freq 2G
-    psamp <= FMP_RND;
+// dtcrand U0_dtcrand ( .CKIN(FDTC), .CKOUT(FDTCRND) );
+always @ (posedge FDTC_SYNC) begin // freq 2G
+    PHE <= FAUX4G;
 end
-
-DCWRT U0_DCWRT ( .* );
-
 
 // Phase Detect Samplers
 real t_pos_fdtc, t_pos_fpllaux4g_nxt;
 real phase_ana_norm, phase_ana_norm_d1, phase_dig_norm, phase_diff;
+real t_diff, t_diff_res, t_diff_quant;
+integer phe_msb, phe_lsb;
 
-always @ (posedge FMP[0]) begin
+always @ (negedge FAUX4G) begin
     t_pos_fpllaux4g_nxt = $realtime;
 end
 
-always @ (posedge DIG_CLK[0]) begin // freq 500M
+always @ (posedge FDTC_SYNC) begin // freq 2G
     t_pos_fdtc = $realtime;
-    phase_ana_norm_d1 = phase_ana_norm;
+    // phase_ana_norm_d1 = phase_ana_norm;
     phase_ana_norm = (t_pos_fdtc - t_pos_fpllaux4g_nxt)*fpllaux;
 end
 
+always @ (posedge FDTC) begin // freq 2G
+    phase_ana_norm_d1 = phase_ana_norm;
+end
+
 always @* begin
-    phase_dig_norm = $unsigned(U0_FOD_CTRL.U1_FOD_CTRL_CALI_PHASESYNC.U2_CLK0_PHEGEN_NCO.nco_phase_s) * (2.0**-`WF_PHASE);
-    // phase_diff =  - phase_ana_norm + phase_dig_norm - 0.5;
+    phase_dig_norm = $unsigned(U0_FOD_CTRL.U1_FOD_CTRL_CALI_PHASESYNC.nco_phase_s) * (2.0**-`WF_PHASE);
     phase_diff =  - phase_ana_norm_d1 + phase_dig_norm - 0.5;
     phase_diff = ((phase_diff) - $floor(phase_diff))*360;
 end
@@ -135,10 +113,13 @@ real rfcw;
 
 initial begin
     NARST = 0;
-    rfcw = 4.72;
+    rfcw = 4;
     FCW_FOD = rfcw * (2**`WF);
     #1e-9;
     NARST = 1;
+	#20e-6;
+    rfcw = 4.23;
+    FCW_FOD = rfcw * (2**`WF);
 end
 
 // FOD SPI CTRL signal
@@ -165,7 +146,7 @@ reg [9:0] KDTCC_INIT;
 reg [9:0] KDTCD_INIT;
 
 initial begin
-	RT_EN = 0;
+	RT_EN = 1;
 	PCALI_EN = 1;
 	FREQ_C_EN = 0;
 	FREQ_C_MODE = 0;
@@ -180,22 +161,23 @@ initial begin
 
 	CALIORDER = 2'b11;
 
-	KB = -5'd2;
+	KB = -5'd3;
 	KC = -5'd3;
 	KD = -5'd5;
 
-	KDTCB_INIT = 10'd390 * 2;
+	KDTCB_INIT = 10'd390 * 1;
 	KDTCC_INIT = 10'd195;
 	KDTCD_INIT = 10'd0;
 
 	DTCCALI_EN = 0;
 	OFSTCALI_EN = 0;
-	#100e-6;
+	#20e-6;
+	PCALI_EN = 1;
 	DTCCALI_EN = 0;
 	OFSTCALI_EN = 0;
 end
 
-FOD_CTRL U0_FOD_CTRL ( .NARST (NARST), .CLK (DIG_CLK[0]), .DSM_EN (1'b1), .FCW_FOD(FCW_FOD), .MMD_DCW_X4 (MMD_DCW_X4), .RT_DCW_X4 (RT_DCW_X4), .DTC_DCW_X4 (DTC_DCW_X4), .PHE_X4(PHE_X4), .* );
+FOD_CTRL U0_FOD_CTRL ( .NARST (NARST), .CLK (FDTC), .DSM_EN (1'b1), .FCW_FOD(FCW_FOD), .MMD_DCW (MMD_DCW), .RT_DCW (RT_DCW), .DTC_DCW (DTC_DCW), .* );
 
 // test
 real p0, t0, f0;
