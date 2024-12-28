@@ -1,12 +1,12 @@
 `timescale 1s/1fs
 
 // -------------------------------------------------------
-// Module Name: mmd_6stage
-// Function: 6 stage mmd module, cover divider range 4~127
-// Author: Yang Yumeng Date: 2024-4-3
+// Module Name: mmd_5stage
+// Function: 5 stage mmd module, cover divider range 4~63
+// Author: Yang Yumeng Date: 9/10 2023
 // Version: v1p0
 // -------------------------------------------------------
-module mmd_6stage(
+module mmd_5stage(
 CKV,
 DIVNUM,
 CKVD
@@ -14,24 +14,22 @@ CKVD
 
 // inputs
 input CKV;
-input [6:0] DIVNUM;
+input [5:0] DIVNUM;
 
 // outputs
 output reg CKVD; 
 
-reg [6:0] divnum, divnum_d1;
-reg  [6:0] counter;
+reg [5:0] divnum;
+reg  [5:0] counter;
 
 initial begin
 	divnum = 4;
-	divnum_d1 = 4;
 	counter = 0;
 end
 
 // dcw is retimer @ pos CKVD
 always @ (posedge CKVD) begin
-	divnum_d1 <= DIVNUM;
-	divnum <= divnum_d1;
+	divnum <= DIVNUM;
 end
 
 always @ (posedge CKV) begin

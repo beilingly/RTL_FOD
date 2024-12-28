@@ -34,6 +34,8 @@ output real Y; // output RLS-Distortion data
 
 reg [`Nseg-1:0] en_seg;
 real y_seg [0:`Nseg-1];
+real kdtc;
+real kdtc_seg [0:`Nseg-1];
 real kdtc_init_unit;
 real kdtcc_init [0:`Nseg-1];
 integer x_int;
@@ -58,16 +60,17 @@ always @* begin
 
     // select y output
     Y = y_seg[x_int];
+    kdtc = kdtc_seg[x_int];
 end
 
 // instances of RLS
 genvar geni;
 generate
     // geni = 0, pivot
-    CALI_RLS UGEN_RLS_PIVOT ( .NRST(NRST), .EN(en_seg[0]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .sync_dly(sync_dly), .ERR(ERR), .PIVOT(1'd1), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[0]), .Y(y_seg[0]) );
+    CALI_RLS UGEN_RLS_PIVOT ( .NRST(NRST), .EN(en_seg[0]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .sync_dly(sync_dly), .ERR(ERR), .PIVOT(1'd1), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[0]), .Y(y_seg[0]), .kdtc(kdtc_seg[0]) );
     // geni > 0
     for (geni=1; geni<`Nseg; geni=geni+1) begin: genblock_rls_segs
-        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .sync_dly(sync_dly), .ERR(ERR), .PIVOT(1'd0), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[geni]), .Y(y_seg[geni]) );
+        CALI_RLS UGEN_RLS ( .NRST(NRST), .EN(en_seg[geni]), .CLK(CLK), .CALI_MODE_RLS(CALI_MODE_RLS), .X(x_frac), .sync_dly(sync_dly), .ERR(ERR), .PIVOT(1'd0), .kdtcb_init(KDTC_INIT), .kdtcc_init(kdtcc_init[geni]), .Y(y_seg[geni]), .kdtc(kdtc_seg[geni]) );
     end
 endgenerate
 
@@ -89,7 +92,8 @@ ERR,
 PIVOT,
 kdtcb_init,
 kdtcc_init,
-Y
+Y,
+kdtc
 );
 
 `include "veractor_operation.sv"
@@ -106,11 +110,12 @@ input real kdtcb_init; // initial gain
 input real kdtcc_init; // initial offset
 
 output real Y; // output RLS-Distortion data
+output real kdtc;
 
 // internal signal
 
 // RLS signal
-real x_dn [1:`Nseg]; // sync x with err
+real x_dn [1:8]; // sync x with err
 real x;
 real xv [0:`Nx-1], xv_cur [0:`Nx-1];
 real xv_mat [0:`Nx*`Nx-1];
@@ -142,8 +147,13 @@ real lms_k [0:`Nx-1];
 
 initial begin
     lms_k[0] = 1e-1;
-    lms_k[1] = 2.0**-1;
+    lms_k[1] = 1;
     lms_k[2] = 0;
+end
+
+// output kdtc
+always @* begin
+    kdtc = lms_lut_d1[1];
 end
 
 // code begin

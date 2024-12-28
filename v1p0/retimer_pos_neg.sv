@@ -35,6 +35,7 @@ always @ (negedge D) begin
     POLARITY_sync <= POLARITY;
 end
 
-assign OUT = POLARITY_sync? D_pos: D_neg;
+// assign OUT = POLARITY_sync? D_pos: D_neg;
+assign #(5e-12) OUT = POLARITY_sync? D_neg: D;
 
 endmodule

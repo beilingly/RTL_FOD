@@ -249,20 +249,20 @@ always @ (posedge CLK or negedge NRST) begin
 	end
 end
 
-real r_phe_x4_0, r_phe_x4_1, r_phe_x4_2, r_phe_x4_3;
-real r_out_x4_0, r_out_x4_1, r_out_x4_2, r_out_x4_3;
+// real r_phe_x4_0, r_phe_x4_1, r_phe_x4_2, r_phe_x4_3;
+// real r_out_x4_0, r_out_x4_1, r_out_x4_2, r_out_x4_3;
 
-always @* begin
-	r_phe_x4_0 = PHE_X4[1*`WF-1-:`WF] * (2.0**-`WF);
-	r_phe_x4_1 = PHE_X4[2*`WF-1-:`WF] * (2.0**-`WF);
-	r_phe_x4_2 = PHE_X4[3*`WF-1-:`WF] * (2.0**-`WF);
-	r_phe_x4_3 = PHE_X4[4*`WF-1-:`WF] * (2.0**-`WF);
+// always @* begin
+	// r_phe_x4_0 = PHE_X4[1*`WF-1-:`WF] * (2.0**-`WF);
+	// r_phe_x4_1 = PHE_X4[2*`WF-1-:`WF] * (2.0**-`WF);
+	// r_phe_x4_2 = PHE_X4[3*`WF-1-:`WF] * (2.0**-`WF);
+	// r_phe_x4_3 = PHE_X4[4*`WF-1-:`WF] * (2.0**-`WF);
 
-	r_out_x4_0 = OUT_X4[0];
-	r_out_x4_1 = OUT_X4[1];
-	r_out_x4_2 = OUT_X4[2];
-	r_out_x4_3 = OUT_X4[3];
-end
+	// r_out_x4_0 = OUT_X4[0];
+	// r_out_x4_1 = OUT_X4[1];
+	// r_out_x4_2 = OUT_X4[2];
+	// r_out_x4_3 = OUT_X4[3];
+// end
 
 endmodule
 // ------------------------------------------------------------
@@ -461,16 +461,16 @@ end
 // diffphase of dig and analog with digital random dither
 assign PHE_NORM = diff_phase[`WF_PHASE-`WF-1]? (diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]+1'b1): diff_phase[`WF_PHASE-1:`WF_PHASE-`WF]; // round to `WF bit
 
-// test
-integer fp1;
-real r_dphase_c, r_diff_phase, r_nco_phase;
+// // test
+// integer fp1;
+// real r_dphase_c, r_diff_phase, r_nco_phase;
 
-always @* begin
-	r_dphase_c = $unsigned(dphase_c) * (2.0**-`WF_PHASE) * 360 + 180;
-	r_dphase_c = (r_dphase_c/360 - $floor(r_dphase_c/360))*360;
-	r_diff_phase = $signed(diff_phase) * (2.0**-`WF_PHASE);
-	r_nco_phase = $unsigned(nco_phase_s) * (2.0**-`WF_PHASE);
-end
+// always @* begin
+	// r_dphase_c = $unsigned(dphase_c) * (2.0**-`WF_PHASE) * 360 + 180;
+	// r_dphase_c = (r_dphase_c/360 - $floor(r_dphase_c/360))*360;
+	// r_diff_phase = $signed(diff_phase) * (2.0**-`WF_PHASE);
+	// r_nco_phase = $unsigned(nco_phase_s) * (2.0**-`WF_PHASE);
+// end
 
 endmodule
 
@@ -1087,21 +1087,21 @@ always @ (posedge CLK or negedge NRST) begin
 	end
 end
 
-// test
-real lutb0, lutb1, lutb2, lutb3, lutc0, lutc1, lutc2, lutc3, lutd0, lutd1;
+// // test
+// real lutb0, lutb1, lutb2, lutb3, lutc0, lutc1, lutc2, lutc3, lutd0, lutd1;
 
-always @* begin
-	lutb0 = $signed(LUTB[0]) * (2.0**(-`WF));
-	lutb1 = $signed(LUTB[1]) * (2.0**(-`WF));
-	lutb2 = $signed(LUTB[2]) * (2.0**(-`WF));
-	lutb3 = $signed(LUTB[3]) * (2.0**(-`WF));
-	lutc0 = $signed(LUTC[0]) * (2.0**(-`WF));
-	lutc1 = $signed(LUTC[1]) * (2.0**(-`WF));
-	lutc2 = $signed(LUTC[2]) * (2.0**(-`WF));
-	lutc3 = $signed(LUTC[3]) * (2.0**(-`WF));
-	lutd0 = $signed(LUTD[0]) * (2.0**(-`WF));
-	lutd1 = $signed(LUTD[1]) * (2.0**(-`WF));
-end
+// always @* begin
+	// lutb0 = $signed(LUTB[0]) * (2.0**(-`WF));
+	// lutb1 = $signed(LUTB[1]) * (2.0**(-`WF));
+	// lutb2 = $signed(LUTB[2]) * (2.0**(-`WF));
+	// lutb3 = $signed(LUTB[3]) * (2.0**(-`WF));
+	// lutc0 = $signed(LUTC[0]) * (2.0**(-`WF));
+	// lutc1 = $signed(LUTC[1]) * (2.0**(-`WF));
+	// lutc2 = $signed(LUTC[2]) * (2.0**(-`WF));
+	// lutc3 = $signed(LUTC[3]) * (2.0**(-`WF));
+	// lutd0 = $signed(LUTD[0]) * (2.0**(-`WF));
+	// lutd1 = $signed(LUTD[1]) * (2.0**(-`WF));
+// end
 
 endmodule
 // ------------------------------------------------------------

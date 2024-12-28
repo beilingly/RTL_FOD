@@ -16,7 +16,7 @@ input CKIN;
 input [9:0] DCW;
 output CKOUT;
 
-parameter real t_res = 60e-15;
+parameter real t_res = 160e-15;
 parameter real t_ofst = 0;
 real t_delta;
 reg ck_delay;
@@ -27,9 +27,7 @@ always @ (negedge CKIN) begin
 	DCW_sync <= DCW;
 end
 
-// assign t_delta = t_ofst + $unsigned(DCW_sync) * t_res;
-// 10 LSB INL
-assign t_delta = t_ofst + $unsigned(DCW_sync) * t_res + 10 * $sin(1.0*$unsigned(DCW_sync)/1024 * 3.14) * t_res;
+assign t_delta = t_ofst + $unsigned(DCW_sync) * t_res;
 
 always @* begin
 	ck_delay <= #(t_delta) CKIN;
